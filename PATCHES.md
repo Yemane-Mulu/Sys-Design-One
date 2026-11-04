@@ -308,3 +308,11 @@ By explicit user instruction ("I want what we created as the main"), the fork's 
 - **Root cause:** the test expected `minDigits: 0` to fall back to the default. The implementation clamps `0 → 1`, which is the exact documented behavior of the cable-scheme precedent (`resolveCableLabelScheme` in `src/lib/cableLabels.ts` uses the identical clamp). The implementation is correct; the test expectation was wrong — a test-only defect that local verification could not catch (tests are not type-checked or run locally per the fork's constraints).
 - **Correction:** `tests/dropLabels.test.ts` — the blank/missing-fields test now asserts the blank-prefix fallback only, and the clamp test explicitly pins `minDigits: 0 → 1` and `99 → 8` (the cable scheme's semantics). No production code changed; no test weakened, skipped, or deleted.
 - **Verification:** the corrected commit is pushed to both branches; the CI evidence below records the green runs.
+
+### Patch 15 CI evidence (2026-11-04)
+
+- **Run 41906228010** (`verify`, `Sys-Design-One`, head `ec9d2a2`): existing suite **FAILED** with the single finding that drove the test correction above (`dropLabels.test.ts:71`). Checkout, setup-node, and `npm ci` all passed.
+- **Run 41906511885** (`verify`, `Sys-Design-One`, head `2675e4c`): **success — every step green**: `npm ci` ✓, existing suite (`vitest run`, non-watch) ✓ — the full upstream suite plus the three new drop test files (35 test files total), `tsc -b` ✓, `vite build` ✓.
+- **Run 41906517137** (`verify`, `main`, head `2675e4c`): **success — every step green**: `npm ci` ✓, existing suite ✓, `tsc -b` ✓, `vite build` ✓.
+- Both branches verified at `2675e4c874295cfc68babc81f48e0fb98e36a951` via `git ls-remote` after push. Default-branch consumers (including the Cloudflare deploy) now build the drops tree.
+- No dev/preview/watch server started; no secrets written; evidence captured via the GitHub Actions API.

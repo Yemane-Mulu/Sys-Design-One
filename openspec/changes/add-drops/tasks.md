@@ -45,4 +45,4 @@
 
 - [x] 8.1 `tsc -b` local pass
 - [x] 8.2 PATCHES.md register entry (source: user decisions 2026-11-04; changed files; verification)
-- [ ] 8.3 Commit + push both branches (user approval) + CI green recorded
+- [x] 8.3 Commit + push both branches (user approval) + CI green recorded — heads `ec9d2a2` then correction `2675e4c` on both branches; CI runs 41906511885 (`Sys-Design-One`) and 41906517137 (`main`) green, every step; the pre-correction run 41906228010 failure and its fix recorded in PATCHES.md
