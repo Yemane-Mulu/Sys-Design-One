@@ -188,6 +188,25 @@ Conclusion: the 11 retained records remain the complete proven-necessary correct
   - `package-lock.json` — xlsx 0.20.3 pinned with integrity; regenerated via `npm install --package-lock-only` (no local install, no local build)
 - **Verification (2026-11-04):**
   - Lockfile audit: xlsx clear (recorded above); CI verifies the complete existing suite, type check, and production build on the runner after push
+
+## Patch 10 — Update the build toolchain to Vite 7.3.7 / Vitest 4.1.12 (Gate B approved)
+
+- **Source_Fix_Item:** A7 (KNOXNET-FIXES section A) → Requirement 8 (fork spec: `dependency-governance`)
+- **Authorization:** user instruction, 2026-11-04 — "approved to fix Gate A and B as per the spec" (Gate B package presented 2026-11-04; dry-run validated the same day)
+- **Decision record (Gate B evidence requirements):**
+  - **Direct packages + exact versions:** `vite` **7.3.7** (major line 7 — resolves source-doc Open Design Decision 8; also clears the third-party floor surfaced when Cloudflare wrangler 4.157.0 refused to auto-configure a deploy on Vite 5.4.21), `vitest` **4.1.12**, `@vitejs/plugin-react` **5.2.0** (required companion — 4.3.4 does not peer-support Vite 7; covered by Gate B's "every proposed package source and exact direct-dependency version" clause), `jsdom` ^25.0.1 (reclassified to devDependencies, not version-bumped)
+  - **esbuild:** resolves to 0.28.2 within the regenerated tree (doc floor ≥ 0.25)
+  - **Maintenance / licenses:** all four MIT, all actively maintained
+  - **Audit before:** 29 findings (3 low, 11 moderate, 13 high, 2 critical — tinypool ≤ 2.1.1 prototype-pollution→RCE gadgets via vitest 2.1.9)
+  - **Audit after (2026-11-04, lockfile, post-sweep):** **0 vulnerabilities** — tinypool absent from the tree; ws 8.22.1, postcss 8.5.32, and the remaining transitive findings (source-map-js, browserslist, nanoid, form-data, @babel/core, baseline-browser-mapping, postcss-selector-parser) all swept to fixed versions within existing ranges
+  - **Breaking-change analysis:** Vite 5→7 is ESM-config-only (the project's `vite.config.ts` is already ESM); Vitest 2→4 preserves the exact config surface in use (`globals: false`, threads/singleThread pool, jsdom environment, include patterns); plugin-react 4→5 keeps the same `react()` plugin API; CI proves the full suite and production build on the new toolchain
+  - **Lockfile plan:** full regeneration from the approved sources (`npm install --package-lock-only`) plus the transitive sweep (`npm audit fix --package-lock-only`) — both confinement-safe: no local install, no local build
+- **Changed files:**
+  - `package.json` — vite ^7.3.7, @vitejs/plugin-react ^5.2.0; vitest ^4.1.12 and jsdom ^25.0.1 moved from dependencies to devDependencies (Req 8 AC 10–11)
+  - `package-lock.json` — fully regenerated from the approved sources and swept
+- **Verification (2026-11-04):**
+  - Lockfile audit: **0 vulnerabilities** (recorded above — Req 8 AC 13)
+  - CI proves the complete existing suite, `tsc -b`, and production build on the new toolchain after push (Req 8 AC 14)
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
