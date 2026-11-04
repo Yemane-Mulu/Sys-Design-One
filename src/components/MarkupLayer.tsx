@@ -7,6 +7,7 @@ import {
   type Sheet,
   type Markup,
   type DeviceMarkup,
+  type DropMarkup,
   type Project,
 } from "../store/projectStore";
 import { devicesById } from "../data/devices";
@@ -33,6 +34,7 @@ import {
   resolveTagFontSize,
 } from "../lib/tagDefaults";
 import {
+  compareDropNumbers,
   endpointFromMarkup,
   nearestCableRunPoint,
   runCountFor,
@@ -89,6 +91,43 @@ const VALIDATION_RED = "#EF4444";
 /** Stage pixels before Konva starts a drag — avoids click-vs-drag races. */
 const MARKUP_DRAG_DISTANCE = 3;
 
+/** Jack-dot layout on a drop faceplate, keyed by jack count (1–6).
+ *  Coordinates are in PDF user units relative to the plate center —
+ *  amber dots on the midnight plate, mirroring how a wall plate reads. */
+const DROP_JACK_DOTS: Record<number, Array<[number, number]>> = {
+  1: [[0, 0]],
+  2: [
+    [-1.7, 0],
+    [1.7, 0],
+  ],
+  3: [
+    [-3.3, 0],
+    [0, 0],
+    [3.3, 0],
+  ],
+  4: [
+    [-1.7, -1.7],
+    [1.7, -1.7],
+    [-1.7, 1.7],
+    [1.7, 1.7],
+  ],
+  5: [
+    [-3.3, -1.7],
+    [0, -1.7],
+    [3.3, -1.7],
+    [-1.7, 1.7],
+    [1.7, 1.7],
+  ],
+  6: [
+    [-3.3, -1.7],
+    [0, -1.7],
+    [3.3, -1.7],
+    [-3.3, 1.7],
+    [0, 1.7],
+    [3.3, 1.7],
+  ],
+};
+
 export const MarkupLayer = memo(function MarkupLayer({ sheet }: { sheet: Sheet }) {
   const project = useProjectStore((s) => s.project);
   const tagDefaults = useProjectStore((s) => s.project?.tagDefaults);
@@ -102,6 +141,7 @@ export const MarkupLayer = memo(function MarkupLayer({ sheet }: { sheet: Sheet }
   const requestPropertiesPanelFocus = useProjectStore((s) => s.requestPropertiesPanelFocus);
   const updateMarkup = useProjectStore((s) => s.updateMarkup);
   const moveDeviceMarkup = useProjectStore((s) => s.moveDeviceMarkup);
+  const moveDropMarkup = useProjectStore((s) => s.moveDropMarkup);
   const notifyLockedMoveAttempt = useProjectStore((s) => s.notifyLockedMoveAttempt);
   const deleteMarkup = useProjectStore((s) => s.deleteMarkup);
   const activeTool = useProjectStore((s) => s.activeTool);
@@ -348,13 +388,27 @@ export const MarkupLayer = memo(function MarkupLayer({ sheet }: { sheet: Sheet }
         return;
       }
       if (activeTool !== "select") setActiveTool("select");
+      // A drop click selects its whole faceplate — jacks select, move,
+      // and delete as one unit.
+      const selectionIds =
+        m.kind === "drop"
+          ? sheet.markups
+              .filter(
+                (o): o is DropMarkup =>
+                  o.kind === "drop" && o.faceplateId === m.faceplateId,
+              )
+              .map((o) => o.id)
+          : [m.id];
       if (e.evt?.shiftKey) {
         const s = new Set(selected);
-        if (s.has(m.id)) s.delete(m.id);
-        else s.add(m.id);
+        if (s.has(m.id)) {
+          for (const id of selectionIds) s.delete(id);
+        } else {
+          for (const id of selectionIds) s.add(id);
+        }
         setSelected(Array.from(s));
       } else {
-        setSelected([m.id]);
+        setSelected(selectionIds);
       }
     },
     [
@@ -457,6 +511,7 @@ export const MarkupLayer = memo(function MarkupLayer({ sheet }: { sheet: Sheet }
             onMarkupOpenProperties={handleMarkupOpenProperties}
             updateMarkup={updateMarkup}
             moveDeviceMarkup={moveDeviceMarkup}
+            moveDropMarkup={moveDropMarkup}
             notifyLockedMoveAttempt={notifyLockedMoveAttempt}
             lockedMoveHintMessage={lockedMoveHintMessage}
             tagSettings={tagSettings}
@@ -513,6 +568,7 @@ export const MarkupLayer = memo(function MarkupLayer({ sheet }: { sheet: Sheet }
               onMarkupOpenProperties={handleMarkupOpenProperties}
               updateMarkup={updateMarkup}
               moveDeviceMarkup={moveDeviceMarkup}
+              moveDropMarkup={moveDropMarkup}
               notifyLockedMoveAttempt={notifyLockedMoveAttempt}
               lockedMoveHintMessage={lockedMoveHintMessage}
               tagSettings={tagSettings}
@@ -560,6 +616,7 @@ export const MarkupLayer = memo(function MarkupLayer({ sheet }: { sheet: Sheet }
               onMarkupOpenProperties={handleMarkupOpenProperties}
               updateMarkup={updateMarkup}
               moveDeviceMarkup={moveDeviceMarkup}
+              moveDropMarkup={moveDropMarkup}
               notifyLockedMoveAttempt={notifyLockedMoveAttempt}
               lockedMoveHintMessage={lockedMoveHintMessage}
               tagSettings={tagSettings}
@@ -604,6 +661,7 @@ export const MarkupLayer = memo(function MarkupLayer({ sheet }: { sheet: Sheet }
               onMarkupOpenProperties={handleMarkupOpenProperties}
               updateMarkup={updateMarkup}
               moveDeviceMarkup={moveDeviceMarkup}
+              moveDropMarkup={moveDropMarkup}
               notifyLockedMoveAttempt={notifyLockedMoveAttempt}
               lockedMoveHintMessage={lockedMoveHintMessage}
               tagSettings={tagSettings}
@@ -715,6 +773,7 @@ const MarkupNode = memo(function MarkupNode({
   onMarkupOpenProperties,
   updateMarkup,
   moveDeviceMarkup,
+  moveDropMarkup,
   notifyLockedMoveAttempt,
   lockedMoveHintMessage,
   tagSettings,
@@ -740,6 +799,7 @@ const MarkupNode = memo(function MarkupNode({
   onMarkupOpenProperties: (m: Markup, e: any) => void;
   updateMarkup: ReturnType<typeof useProjectStore.getState>["updateMarkup"];
   moveDeviceMarkup: ReturnType<typeof useProjectStore.getState>["moveDeviceMarkup"];
+  moveDropMarkup: ReturnType<typeof useProjectStore.getState>["moveDropMarkup"];
   notifyLockedMoveAttempt: ReturnType<typeof useProjectStore.getState>["notifyLockedMoveAttempt"];
   lockedMoveHintMessage?: string;
   tagSettings: TagSettings;
@@ -772,6 +832,7 @@ const MarkupNode = memo(function MarkupNode({
         (markup.kind === "device" ||
           markup.kind === "text" ||
           markup.kind === "rect" ||
+          markup.kind === "drop" ||
           markup.kind === "schedule");
       setStageCursor(e, directlyDraggable ? "grab" : "pointer");
     },
@@ -819,6 +880,7 @@ const MarkupNode = memo(function MarkupNode({
         hideHoverHint,
         updateMarkup,
         moveDeviceMarkup,
+        moveDropMarkup,
         tagSettings,
         notifyLockedMoveAttempt,
         lockedMoveHintMessage,
@@ -849,6 +911,7 @@ function renderMarkup(
   hideHoverHint: () => void,
   updateMarkup: ReturnType<typeof useProjectStore.getState>["updateMarkup"],
   moveDeviceMarkup: ReturnType<typeof useProjectStore.getState>["moveDeviceMarkup"],
+  moveDropMarkup: ReturnType<typeof useProjectStore.getState>["moveDropMarkup"],
   tagSettings: TagSettings,
   notifyLockedMoveAttempt: ReturnType<typeof useProjectStore.getState>["notifyLockedMoveAttempt"],
   lockedMoveHintMessage?: string,
@@ -2049,6 +2112,197 @@ function renderMarkup(
           shadowBlur={selected ? 6 : hovered ? 5 : 0}
           shadowOpacity={selected ? 0.55 : hovered ? HOVER_SHADOW_OPACITY : 0}
         />
+      );
+    }
+
+    case "drop": {
+      // The faceplate renders once: the first member in drop-number order
+      // draws the plate + label; sibling jacks are data-only records that
+      // share the plate's position, group selection, and deletion.
+      const faceplate = sheetMarkups
+        .filter(
+          (o): o is DropMarkup => o.kind === "drop" && o.faceplateId === m.faceplateId,
+        )
+        .sort((a, b) => compareDropNumbers(a.number, b.number));
+      if (faceplate[0]?.id !== m.id) return null;
+
+      const jackCount = faceplate.length;
+      const dropLabel =
+        jackCount === 1
+          ? faceplate[0].number
+          : `${faceplate[0].number}–${faceplate[jackCount - 1].number} ×${jackCount}`;
+      const plateEdge = 13;
+      const half = plateEdge / 2;
+      const accent = "#4FB7FF";
+      const plateStroke = selected ? "#F4B740" : hovered ? "#9BD1FF" : accent;
+      const dots =
+        DROP_JACK_DOTS[Math.min(6, Math.max(1, jackCount))] ?? DROP_JACK_DOTS[1];
+
+      // Label pill — the device-tag pattern: draggable offset honored by
+      // the markup PDF export, defaulting to the plate's lower-right.
+      const pillFontSize = 6;
+      const pillPadding = 3;
+      const pillW = dropLabel.length * pillFontSize * 0.6 + pillPadding * 2;
+      const pillH = pillFontSize + pillPadding * 2;
+      const pillDx = m.labelOffsetX ?? half + 4;
+      const pillDy = m.labelOffsetY ?? half + 3;
+
+      return (
+        <Group>
+          {renderPart === "body" && (
+            <Group
+              x={m.x}
+              y={m.y}
+              draggable={draggable}
+              dragDistance={MARKUP_DRAG_DISTANCE}
+              onClick={onClick}
+              onTap={onClick}
+              onDblClick={onOpenProperties}
+              onDblTap={onOpenProperties}
+              onMouseDown={handlePointerDown}
+              onMouseEnter={(e) => {
+                showHoverHint({
+                  text: draggable
+                    ? jackCount > 1
+                      ? `move ${jackCount}-jack plate`
+                      : "move drop"
+                    : "select drop",
+                  x: m.x + half + 6,
+                  y: m.y - half - 5,
+                  targetKey: `${m.id}:drop`,
+                });
+                setStageCursor(e, draggable ? "grab" : "pointer");
+              }}
+              onMouseLeave={(e) => {
+                hideHoverHint();
+                setStageCursor(e, "");
+              }}
+              onDragStart={clearHoverForDrag}
+              onDragEnd={(e) => {
+                moveDropMarkup(m.id, e.target.x(), e.target.y());
+                finishHoverDrag(e);
+              }}
+            >
+              {/* generous hit target around the plate */}
+              <Rect
+                x={-half - ctl(3)}
+                y={-half - ctl(3)}
+                width={plateEdge + ctl(6)}
+                height={plateEdge + ctl(6)}
+                fill="rgba(11,18,32,0.01)"
+                perfectDrawEnabled={false}
+              />
+              <Rect
+                x={-half}
+                y={-half}
+                width={plateEdge}
+                height={plateEdge}
+                cornerRadius={2.2}
+                fill="#0B1220"
+                stroke={plateStroke}
+                strokeWidth={selected ? 1.2 : 0.85}
+                perfectDrawEnabled={false}
+                listening={false}
+                shadowColor={!selected && hovered ? accent : undefined}
+                shadowBlur={!selected && hovered ? 5 : 0}
+                shadowOpacity={!selected && hovered ? HOVER_SHADOW_OPACITY : 0}
+              />
+              {dots.map(([dx, dy], index) => (
+                <Circle
+                  key={index}
+                  x={dx}
+                  y={dy}
+                  radius={1.15}
+                  fill="#F4B740"
+                  perfectDrawEnabled={false}
+                  listening={false}
+                />
+              ))}
+            </Group>
+          )}
+          <Group
+            x={m.x + pillDx}
+            y={m.y + pillDy}
+            draggable={draggable}
+            dragDistance={MARKUP_DRAG_DISTANCE}
+            onClick={onClick}
+            onTap={onClick}
+            onDblClick={onOpenProperties}
+            onDblTap={onOpenProperties}
+            onMouseDown={handlePointerDown}
+            onMouseEnter={(e) => {
+              showHoverHint({
+                text: draggable ? "move label" : "select drop",
+                x: m.x + pillDx + pillW + 5,
+                y: m.y + pillDy - 4,
+                targetKey: `${m.id}:drop-label`,
+              });
+              setStageCursor(e, draggable ? "grab" : "pointer");
+            }}
+            onMouseLeave={(e) => {
+              hideHoverHint();
+              setStageCursor(e, "");
+            }}
+            onDragStart={clearHoverForDrag}
+            onDragMove={(e) => {
+              // Soft clamp keeps the pill visually tied to the plate.
+              const dx = e.target.x() - m.x;
+              const dy = e.target.y() - m.y;
+              const max = maxTagOffsetDistance(plateEdge);
+              const d = Math.hypot(dx, dy);
+              if (d > max) {
+                const k = max / d;
+                e.target.x(m.x + dx * k);
+                e.target.y(m.y + dy * k);
+              }
+            }}
+            onDragEnd={(e) => {
+              const clamped = clampTagOffset(
+                e.target.x() - m.x,
+                e.target.y() - m.y,
+                plateEdge,
+              );
+              updateMarkup(m.id, {
+                labelOffsetX: clamped.dx,
+                labelOffsetY: clamped.dy,
+              } as Partial<DropMarkup>);
+              finishHoverDrag(e);
+            }}
+          >
+            <Label listening={false}>
+              <Tag
+                fill="#0B1220"
+                stroke={plateStroke}
+                strokeWidth={hovered ? 1 : 0.75}
+                cornerRadius={3}
+                shadowColor="rgba(0,0,0,0.4)"
+                shadowBlur={4}
+                shadowOpacity={0.6}
+                perfectDrawEnabled={false}
+                strokeScaleEnabled={false}
+                listening={false}
+              />
+              <Text
+                text={dropLabel}
+                fontFamily="JetBrains Mono"
+                fontStyle="600"
+                fontSize={pillFontSize}
+                fill="#F5F7FA"
+                padding={pillPadding}
+                perfectDrawEnabled={false}
+                listening={false}
+              />
+            </Label>
+            <Rect
+              x={-4}
+              y={-4}
+              width={pillW + 8}
+              height={pillH + 8}
+              fill="rgba(11,18,32,0.01)"
+              perfectDrawEnabled={false}
+            />
+          </Group>
+        </Group>
       );
     }
   }

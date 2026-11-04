@@ -6,6 +6,7 @@ import type {
   Markup,
   ExportVisibility,
   DeviceMarkup,
+  DropMarkup,
   Layer,
   DeviceConnection,
 } from "../store/projectStore";
@@ -51,6 +52,7 @@ import {
   nestedScheduleTitle,
 } from "../lib/nesting";
 import {
+  compareDropNumbers,
   runCountFor,
   runLabelLayoutsFor,
   type RunLabelLayout,
@@ -69,6 +71,43 @@ import {
   scheduleBlockSize,
   scheduleRowsForDisplay,
 } from "../lib/scheduleBlocks";
+
+/** Jack-dot layout on a drop faceplate, by jack count (1–6). Mirrors
+ *  DROP_JACK_DOTS in MarkupLayer.tsx — keep the two tables in sync so
+ *  the export prints the plate exactly as the canvas draws it. */
+const DROP_JACK_DOTS: Record<number, Array<[number, number]>> = {
+  1: [[0, 0]],
+  2: [
+    [-1.7, 0],
+    [1.7, 0],
+  ],
+  3: [
+    [-3.3, 0],
+    [0, 0],
+    [3.3, 0],
+  ],
+  4: [
+    [-1.7, -1.7],
+    [1.7, -1.7],
+    [-1.7, 1.7],
+    [1.7, 1.7],
+  ],
+  5: [
+    [-3.3, -1.7],
+    [0, -1.7],
+    [3.3, -1.7],
+    [-1.7, 1.7],
+    [1.7, 1.7],
+  ],
+  6: [
+    [-3.3, -1.7],
+    [0, -1.7],
+    [3.3, -1.7],
+    [-3.3, 1.7],
+    [0, 1.7],
+    [3.3, 1.7],
+  ],
+};
 
 /**
  * Builds and downloads a branded multi-sheet PDF:
@@ -1939,6 +1978,86 @@ function drawSingleMarkup(
         color: hex(m.color),
       });
     }
+    return;
+  }
+
+  if (m.kind === "drop") {
+    // Documentation-only network drop. The faceplate renders once: the
+    // first member in drop-number order draws plate + label pill,
+    // mirroring the canvas node (plate edge, amber jack dots, blue
+    // stroke, mono pill with the number range).
+    if (deviceRenderPart === "tag") return;
+    const faceplate = sheet.markups
+      .filter(
+        (o): o is DropMarkup => o.kind === "drop" && o.faceplateId === m.faceplateId,
+      )
+      .sort((a, b) => compareDropNumbers(a.number, b.number));
+    if (faceplate[0]?.id !== m.id) return;
+    const jackCount = faceplate.length;
+    const dropLabel =
+      jackCount === 1
+        ? faceplate[0].number
+        : `${faceplate[0].number}–${faceplate[jackCount - 1].number} ×${jackCount}`;
+    const plateEdge = 13;
+    const half = plateEdge / 2;
+    const cornerR = 2.2;
+    const cx = m.x;
+    const cy = py(m.y);
+    const accent = hex("#4FB7FF");
+    const straight = plateEdge - cornerR * 2;
+    page.drawSvgPath(
+      `M ${cx - half + cornerR} ${cy - half} h ${straight} ` +
+        `a ${cornerR} ${cornerR} 0 0 1 ${cornerR} ${cornerR} v ${straight} ` +
+        `a ${cornerR} ${cornerR} 0 0 1 ${-cornerR} ${cornerR} h ${-straight} ` +
+        `a ${cornerR} ${cornerR} 0 0 1 ${-cornerR} ${-cornerR} v ${-straight} ` +
+        `a ${cornerR} ${cornerR} 0 0 1 ${cornerR} ${-cornerR} z`,
+      {
+        x: 0,
+        y: 0,
+        scale: 1,
+        color: hex("#0B1220"),
+        borderColor: accent,
+        borderWidth: 0.85,
+      },
+    );
+    const dots =
+      DROP_JACK_DOTS[Math.min(6, Math.max(1, jackCount))] ?? DROP_JACK_DOTS[1];
+    for (const [dx, dy] of dots) {
+      page.drawCircle({
+        x: cx + dx,
+        y: cy - dy,
+        size: 1.15,
+        color: hex("#F4B740"),
+      });
+    }
+    // Label pill — the device-tag pattern: label offsets are PDF points
+    // from the plate center, defaulting to the plate's lower-right.
+    const fontSize = 6;
+    const padding = 3;
+    const text = safeText(dropLabel);
+    const textW = fonts.mono.widthOfTextAtSize(text, fontSize);
+    const pillW = textW + padding * 2;
+    const pillH = fontSize + padding * 2;
+    const pillDx = m.labelOffsetX ?? half + 4;
+    const pillDy = m.labelOffsetY ?? half + 3;
+    const left = cx + pillDx;
+    const bottom = cy - pillDy - pillH;
+    page.drawRectangle({
+      x: left,
+      y: bottom,
+      width: pillW,
+      height: pillH,
+      color: hex("#0B1220"),
+      borderColor: accent,
+      borderWidth: 0.75,
+    });
+    page.drawText(text, {
+      x: left + padding,
+      y: bottom + padding,
+      size: fontSize,
+      font: fonts.mono,
+      color: hex("#F5F7FA"),
+    });
     return;
   }
 }

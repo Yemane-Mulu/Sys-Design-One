@@ -225,7 +225,7 @@ layout, and the project + branding settings.
 | **Per-instance commissioning** | Full IP / VLAN / MAC / RTSP / NVR channel / switch port / asset tag / firmware on every placed device. Travels in the `.knoxnet` file. |
 | Auto-numbering | Devices get tags like CAM-01, AP-03, NID-02 automatically per-sheet. |
 | Cable and conduit routing | Cat6, Cat6A, plenum, single/multi-mode fiber, RG6 coax, low-voltage, and common conduit types. Route through devices, pull boxes, junction boxes, racks, or raw points; add service loops, custom fiber strand counts, physical labels, and Multi-device drop branches. |
-| Markup tools | Select, pan, calibrate, device, cable, dimension, text, callout, revision cloud, rectangle, polygon, arrow, freehand. All vector. |
+| Markup tools | Select, pan, calibrate, device, cable, dimension, text, callout, revision cloud, rectangle, polygon, arrow, freehand, network drop. All vector. |
 | Layers | Auto-layered by category: show, hide, or lock independently. |
 | Racked devices | Rack switches, routers, patch panels, and similar gear into racks, head ends, cabinets, or enclosures. Racked devices stay cable-addressable and can produce compact area schedules. |
 | Validation checks | Non-blocking warnings catch duplicate cable labels, device names, ports, IPs, rack names, and other common field identifiers. |
@@ -258,6 +258,7 @@ layout, and the project + branding settings.
 | `P` | Polygon |
 | `A` | Arrow |
 | `F` | Freehand |
+| `J` | Network Drop |
 | `Cmd/Ctrl+K` | Command Palette |
 | `Cmd/Ctrl+B` | Bid Panel |
 | `Cmd/Ctrl+,` | Settings |

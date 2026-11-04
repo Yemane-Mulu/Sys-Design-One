@@ -251,5 +251,27 @@ export function buildStarterTemplates(): ReportTemplate[] {
       sortBy: [{ field: "deviceTag", dir: "asc" }],
       formats: ["xlsx", "csv"],
     }),
+
+    t({
+      name: "Drops Schedule",
+      description:
+        "Every network drop grouped by faceplate — number, jack type, service, mount, height, and notes. Documentation only: drops never affect the bid.",
+      scope: "drops",
+      filters: [],
+      columns: [
+        { field: "number", header: "Drop #" },
+        { field: "faceplateJackCount", header: "Jacks" },
+        { field: "jackType", header: "Jack Type" },
+        { field: "service", header: "Service" },
+        { field: "mount", header: "Mount" },
+        { field: "heightInches", header: "Height (AFF in)" },
+        { field: "notes", header: "Notes" },
+        { field: "sheetName", header: "Sheet" },
+      ],
+      groupBy: ["faceplateId"],
+      sortBy: [{ field: "number", dir: "asc" }],
+      showTotals: true,
+      formats: ["xlsx", "pdf", "csv"],
+    }),
   ];
 }

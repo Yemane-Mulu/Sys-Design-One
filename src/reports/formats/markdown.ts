@@ -6,7 +6,7 @@
  */
 
 import type { ReportResult } from "../engine";
-import { formatCell } from "../engine";
+import { formatCell, reportTotalsLine } from "../engine";
 import { getByPath } from "../paths";
 import { SCOPE_LABEL } from "../fieldCatalog";
 
@@ -42,6 +42,11 @@ export function reportToMarkdown(result: ReportResult): string {
       );
       lines.push(`| ${cells.join(" | ")} |`);
     }
+    lines.push("");
+  }
+  const totals = reportTotalsLine(result);
+  if (totals) {
+    lines.push(`**${totals}**`);
     lines.push("");
   }
   return lines.join("\n");

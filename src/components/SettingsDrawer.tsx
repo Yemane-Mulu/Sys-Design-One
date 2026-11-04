@@ -15,6 +15,7 @@ import {
 import { QualityToggle } from "./QualityToggle";
 import { QUALITY_PROFILES } from "../lib/quality";
 import { PricingEditor } from "./PricingEditor";
+import { resolveDropLabelScheme, type DropLabelScheme } from "../lib/dropLabels";
 import {
   DEFAULT_BRANDING,
   DEFAULT_COVER_SUBTITLE,
@@ -121,11 +122,82 @@ export function SettingsDrawer() {
                   onChange={(v) => updateBid({ marginPercent: v })}
                 />
               </Section>
+              <Section title="Drop Numbering">
+                <div className="text-[11px] text-ink-400 leading-relaxed">
+                  Numbering scheme for newly placed network drops.
+                  Existing drop numbers never change. Drops are
+                  documentation only — they never affect the bid.
+                </div>
+                <DropSchemeEditor />
+              </Section>
             </>
           )}
           {tab === "branding" && <BrandingEditor />}
           {tab === "pricing" && <PricingEditor />}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Editor for the per-project drop numbering scheme — prefix, separator,
+ * minimum digits. Blank fields fall through to the bundled D-001
+ * defaults; changes only affect newly placed drops.
+ */
+function DropSchemeEditor() {
+  const project = useProjectStore((s) => s.project);
+  const setDropLabelScheme = useProjectStore((s) => s.setDropLabelScheme);
+  if (!project) return null;
+  const resolved = resolveDropLabelScheme(project.dropLabelScheme);
+  const scheme = project.dropLabelScheme;
+  const set = (patch: Partial<DropLabelScheme>) =>
+    setDropLabelScheme({
+      prefix: scheme?.prefix,
+      separator: scheme?.separator,
+      minDigits: scheme?.minDigits,
+      ...patch,
+    });
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      <div>
+        <div className="text-xs text-ink-300 mb-1">Prefix</div>
+        <input
+          className="input"
+          value={scheme?.prefix ?? ""}
+          placeholder={resolved.prefix}
+          onChange={(e) => set({ prefix: e.target.value })}
+        />
+      </div>
+      <div>
+        <div className="text-xs text-ink-300 mb-1">Separator</div>
+        <input
+          className="input"
+          value={scheme?.separator ?? ""}
+          placeholder={resolved.separator}
+          onChange={(e) => set({ separator: e.target.value })}
+        />
+      </div>
+      <div>
+        <div className="text-xs text-ink-300 mb-1">Digits</div>
+        <input
+          className="input"
+          inputMode="numeric"
+          value={scheme?.minDigits ?? ""}
+          placeholder={String(resolved.minDigits)}
+          onChange={(e) => {
+            const parsed = parseInt(e.target.value, 10);
+            set({ minDigits: Number.isFinite(parsed) ? parsed : undefined });
+          }}
+        />
+      </div>
+      <div className="col-span-3 text-[10px] text-ink-400 font-mono">
+        Next drop: {resolved.prefix}
+        {resolved.separator}
+        {String(1).padStart(resolved.minDigits, "0")} → e.g.{" "}
+        {resolved.prefix}
+        {resolved.separator}
+        {String(12).padStart(resolved.minDigits, "0")}
       </div>
     </div>
   );

@@ -83,9 +83,16 @@ export const ALLOWED_MARKUP_KINDS: readonly string[] = [
   "arrow",
   "polygon",
   "freehand",
+  "drop",
   "schedule",
 ];
 const allowedMarkupKindSet = new Set<string>(ALLOWED_MARKUP_KINDS);
+
+/** Drop jack services and mounts — mirrors the DropService / DropMount
+ *  unions in src/store/projectStore.ts. Validated on import so a
+ *  malformed file cannot smuggle an unknown enum value into the UI. */
+const DROP_SERVICES = new Set(["data", "poe", "voice", "coax", "fiber"]);
+const DROP_MOUNTS = new Set(["wall", "floor", "ceiling", "pole", "box"]);
 
 /** Allowed serialized sheet-source kinds (from sheetSource.ts). */
 const allowedSourceKindSet = new Set(["pdf", "dxf", "svg", "raster", "ifc"]);
@@ -125,6 +132,11 @@ const SHORT_TEXT_KEYS = new Set([
   "dir",
   "scope",
   "format",
+  "number",
+  "faceplateId",
+  "jackType",
+  "service",
+  "mount",
 ]);
 
 /** Binary-payload keys — type-checked as strings, never length-capped
@@ -163,6 +175,32 @@ function validateMarkup(markup: unknown, path: string): void {
   }
   if (m.kind === "schedule" && typeof m.targetId !== "string") {
     invalid(`${path}.targetId`, "schedule markup requires a targetId");
+  }
+  if (m.kind === "drop") {
+    if (typeof m.number !== "string" || !m.number.trim()) {
+      invalid(`${path}.number`, "drop markup requires a number");
+    }
+    if (typeof m.faceplateId !== "string" || !m.faceplateId.trim()) {
+      invalid(`${path}.faceplateId`, "drop markup requires a faceplateId");
+    }
+    if (
+      m.service !== undefined &&
+      (typeof m.service !== "string" || !DROP_SERVICES.has(m.service))
+    ) {
+      invalid(`${path}.service`, `unsupported drop service ${JSON.stringify(m.service)}`);
+    }
+    if (
+      m.mount !== undefined &&
+      (typeof m.mount !== "string" || !DROP_MOUNTS.has(m.mount))
+    ) {
+      invalid(`${path}.mount`, `unsupported drop mount ${JSON.stringify(m.mount)}`);
+    }
+    if (
+      m.heightInches !== undefined &&
+      (typeof m.heightInches !== "number" || !Number.isFinite(m.heightInches))
+    ) {
+      invalid(`${path}.heightInches`, "drop heightInches must be a finite number");
+    }
   }
 }
 

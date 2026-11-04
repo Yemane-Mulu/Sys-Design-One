@@ -18,6 +18,7 @@ import {
   type PortSpec,
   type ScheduleMarkup,
   type ScheduleBlockMode,
+  type DropMarkup,
 } from "../store/projectStore";
 import { devicesById, effectiveDevicePorts } from "../data/devices";
 import {
@@ -197,12 +198,16 @@ export function PropertiesPanel({ className = "" }: { className?: string }) {
             />
           </>
         ) : multi ? (
-          <MultiMarkupEditor
-            markups={multi}
-            onApply={(patch) =>
-              multi.forEach((m) => updateMarkup(m.id, patch as any))
-            }
-          />
+          multi.every((m) => m.kind === "drop") ? (
+            <DropsFaceplateEditor markups={multi as DropMarkup[]} />
+          ) : (
+            <MultiMarkupEditor
+              markups={multi}
+              onApply={(patch) =>
+                multi.forEach((m) => updateMarkup(m.id, patch as any))
+              }
+            />
+          )
         ) : (
           <>
             <SectionTitle>Sheet</SectionTitle>
@@ -647,6 +652,7 @@ function SingleMarkupEditor({
       {markup.kind === "device" && <DeviceProps markup={markup} onChange={onChange} />}
       {markup.kind === "cable" && <CableProps markup={markup} onChange={onChange} />}
       {markup.kind === "schedule" && <ScheduleProps markup={markup} onChange={onChange} />}
+      {markup.kind === "drop" && <DropJackFields markup={markup} onChange={onChange} />}
       {(markup.kind === "text" || markup.kind === "callout") && (
         <Field label="Text">
           <textarea
@@ -667,14 +673,16 @@ function SingleMarkupEditor({
       {(markup.kind === "rect" || markup.kind === "polygon" || markup.kind === "freehand") && (
         <PositionFields markup={markup as any} onChange={onChange} />
       )}
-      <Field label="Notes">
-        <textarea
-          className="input min-h-[60px]"
-          value={markup.notes ?? ""}
-          onChange={(e) => onChange({ notes: e.target.value })}
-          placeholder="Internal notes (not exported)"
-        />
-      </Field>
+      {markup.kind !== "drop" && (
+        <Field label="Notes">
+          <textarea
+            className="input min-h-[60px]"
+            value={markup.notes ?? ""}
+            onChange={(e) => onChange({ notes: e.target.value })}
+            placeholder="Internal notes (not exported)"
+          />
+        </Field>
+      )}
     </>
   );
 }
@@ -1753,6 +1761,158 @@ function PositionFields({ markup, onChange }: any) {
 }
 
 // ───── Multi-select editor ─────
+
+// ───── Drops (documentation-only markup) ─────
+
+const DROP_SERVICE_OPTIONS = ["data", "poe", "voice", "coax", "fiber"] as const;
+const DROP_MOUNT_OPTIONS = ["wall", "floor", "ceiling", "pole", "box"] as const;
+
+/** Per-jack field editor. One drop = one jack; every field is
+ *  documentation (the Drops Schedule reports them all). The bid never
+ *  reads any of this. */
+function DropJackFields({
+  markup,
+  onChange,
+}: {
+  markup: DropMarkup;
+  onChange: (patch: any) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Drop #">
+          <input
+            className="input"
+            value={markup.number}
+            onChange={(e) => onChange({ number: e.target.value })}
+          />
+        </Field>
+        <Field label="Height (AFF in)">
+          <input
+            className="input"
+            inputMode="decimal"
+            value={markup.heightInches ?? ""}
+            placeholder="48"
+            onChange={(e) => {
+              const raw = e.target.value.trim();
+              if (!raw) {
+                onChange({ heightInches: undefined });
+                return;
+              }
+              const v = parseFloat(raw);
+              onChange({ heightInches: Number.isFinite(v) ? v : undefined });
+            }}
+          />
+        </Field>
+      </div>
+      <Field label="Jack / Outlet Type">
+        <input
+          className="input"
+          value={markup.jackType ?? ""}
+          placeholder="Cat6 keystone"
+          onChange={(e) => onChange({ jackType: e.target.value })}
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Service">
+          <select
+            className="input"
+            value={markup.service ?? ""}
+            onChange={(e) =>
+              onChange({
+                service: (e.target.value || undefined) as DropMarkup["service"],
+              })
+            }
+          >
+            <option value="">—</option>
+            {DROP_SERVICE_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Mount">
+          <select
+            className="input"
+            value={markup.mount ?? ""}
+            onChange={(e) =>
+              onChange({
+                mount: (e.target.value || undefined) as DropMarkup["mount"],
+              })
+            }
+          >
+            <option value="">—</option>
+            {DROP_MOUNT_OPTIONS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field label="Notes" hint="shown on the Drops Schedule">
+        <textarea
+          className="input min-h-[48px]"
+          value={markup.notes ?? ""}
+          placeholder="e.g. odd condition — existing conduit usable"
+          onChange={(e) => onChange({ notes: e.target.value })}
+        />
+      </Field>
+    </div>
+  );
+}
+
+/** Faceplate editor for a drops-only selection: groups the selected
+ *  jacks by faceplate and lists each jack for individual field editing. */
+function DropsFaceplateEditor({ markups }: { markups: DropMarkup[] }) {
+  const updateMarkup = useProjectStore((s) => s.updateMarkup);
+  const faceplates = useMemo(() => {
+    const groups = new Map<string, DropMarkup[]>();
+    for (const markup of markups) {
+      const list = groups.get(markup.faceplateId) ?? [];
+      list.push(markup);
+      groups.set(markup.faceplateId, list);
+    }
+    return Array.from(groups.values()).map((jacks) =>
+      [...jacks].sort((a, b) =>
+        a.number.localeCompare(b.number, undefined, { numeric: true }),
+      ),
+    );
+  }, [markups]);
+  return (
+    <>
+      <SectionTitle>
+        Drops · {markups.length} jack{markups.length === 1 ? "" : "s"}
+      </SectionTitle>
+      <div className="text-[11px] text-ink-400 pb-1">
+        Each jack is its own numbered drop on a shared faceplate.
+        Documentation only — drops never affect the bid.
+      </div>
+      {faceplates.map((jacks, index) => (
+        <div
+          key={jacks[0]?.faceplateId ?? index}
+          className="rounded-lg border border-white/5 p-2 space-y-2"
+        >
+          <span className="text-[10px] font-mono uppercase tracking-wider text-ink-400">
+            Faceplate {index + 1} · {jacks.length} jack{jacks.length === 1 ? "" : "s"}
+          </span>
+          {jacks.map((jack) => (
+            <div
+              key={jack.id}
+              className="rounded-md bg-ink-900/40 border border-white/5 p-2"
+            >
+              <DropJackFields
+                markup={jack}
+                onChange={(patch) => updateMarkup(jack.id, patch)}
+              />
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
 
 function MultiMarkupEditor({
   markups,
@@ -3228,6 +3388,7 @@ function describeMarkup(markup: Markup) {
     arrow: "Arrow",
     polygon: "Polygon",
     freehand: "Freehand",
+    drop: "Network Drop",
     schedule: "Schedule",
   };
   return map[markup.kind] ?? "Markup";

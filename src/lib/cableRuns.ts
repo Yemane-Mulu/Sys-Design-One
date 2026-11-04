@@ -3,6 +3,7 @@ import type {
   CableRunEndpoint,
   DeviceMarkup,
   DeviceConnection,
+  DropMarkup,
   Markup,
   Sheet,
 } from "../store/projectStore";
@@ -80,6 +81,9 @@ export function endpointFromMarkup(
   markup: Markup,
   options: { asRouteWaypoint?: boolean; markups?: Markup[] } = {},
 ): CableRunEndpoint | null {
+  if (markup.kind === "drop") {
+    return dropCableEndpoint(markup, options.markups ?? []);
+  }
   if (!isCableAddressableMarkup(markup)) return null;
   const parent = markup.parentId
     ? options.markups?.find(
@@ -109,6 +113,49 @@ export function isRouteInfrastructureMarkup(
   markup: Markup,
 ): markup is DeviceMarkup {
   return markup.kind === "device" && isRouteInfrastructureDevice(markup);
+}
+
+/** A cable landing on a faceplate attaches to the first jack (by drop
+ *  number, natural sort) that doesn't already terminate a cable on this
+ *  sheet. When every jack is taken, the last jack gets the run — the
+ *  user can re-terminate manually. The endpoint label names the jack's
+ *  drop number so the run reads "… → D-003" on the canvas and schedule. */
+export function dropCableEndpoint(
+  drop: DropMarkup,
+  markups: Markup[],
+): CableRunEndpoint | null {
+  const faceplate = markups
+    .filter((m): m is DropMarkup => m.kind === "drop" && m.faceplateId === drop.faceplateId)
+    .sort((a, b) => compareDropNumbers(a.number, b.number));
+  if (faceplate.length === 0) return null;
+
+  const terminated = new Set<string>();
+  for (const markup of markups) {
+    if (markup.kind !== "cable") continue;
+    for (const attachment of markup.pointAttachments ?? []) {
+      if (attachment?.deviceMarkupId) terminated.add(attachment.deviceMarkupId);
+    }
+  }
+
+  const target =
+    faceplate.find((member) => !terminated.has(member.id)) ??
+    faceplate[faceplate.length - 1];
+  return {
+    x: target.x,
+    y: target.y,
+    label: target.number,
+    deviceMarkupId: target.id,
+    deviceTag: target.number,
+  };
+}
+
+/** Natural drop-number ordering: numeric-aware on the digit run so
+ *  D-2 sorts before D-10 regardless of padding. */
+export function compareDropNumbers(a: string, b: string): number {
+  const na = Number((a.match(/(\d+)\s*$/)?.[1] ?? Number.NaN));
+  const nb = Number((b.match(/(\d+)\s*$/)?.[1] ?? Number.NaN));
+  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+  return a.localeCompare(b);
 }
 
 export function routeInfrastructureLabel(markup: DeviceMarkup) {

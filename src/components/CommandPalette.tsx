@@ -14,6 +14,7 @@ import {
   Hexagon,
   ArrowUpRight,
   Pen,
+  Plug,
   Calculator,
   Settings2,
   FileDown,
@@ -62,6 +63,7 @@ export function CommandPalette() {
       { id: "arrow", label: "Arrow", icon: ArrowUpRight },
       { id: "freehand", label: "Freehand", icon: Pen },
       { id: "dimension", label: "Dimension", icon: Ruler },
+      { id: "drop", label: "Network Drop", icon: Plug },
     ];
     const out: Command[] = tools.map((t) => ({
       id: `tool:${t.id}`,

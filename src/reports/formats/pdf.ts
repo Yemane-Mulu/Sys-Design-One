@@ -15,7 +15,7 @@
 
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { ReportResult } from "../engine";
-import { formatCell } from "../engine";
+import { formatCell, reportTotalsLine } from "../engine";
 import { getByPath } from "../paths";
 import { SCOPE_LABEL } from "../fieldCatalog";
 
@@ -164,6 +164,19 @@ export async function reportToPdfBytes(result: ReportResult): Promise<Uint8Array
       state.y -= ROW_H;
     }
     state.y -= 6;
+  }
+
+  const totals = reportTotalsLine(result);
+  if (totals) {
+    newPageIfNeeded();
+    state.page.drawText(safeAsciiText(totals), {
+      x: MARGIN_X,
+      y: state.y - 4,
+      size: 10,
+      font: bold,
+      color: rgb(0.106, 0.141, 0.2),
+    });
+    state.y -= 16;
   }
 
   drawFooterAllPages(doc, font, projectName, title);

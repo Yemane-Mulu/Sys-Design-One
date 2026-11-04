@@ -54,6 +54,10 @@ import {
   type CableLabelScheme,
 } from "../lib/cableLabels";
 import {
+  assignGeneratedDropNumbers,
+  type DropLabelScheme,
+} from "../lib/dropLabels";
+import {
   DEFAULT_CANVAS_VIEWPORT,
   loadCanvasViewport,
   normalizeCanvasViewport,
@@ -188,6 +192,7 @@ export type ToolId =
   | "polygon"
   | "arrow"
   | "freehand"
+  | "drop"
   | "mask";
 
 /** Per-sheet rectangular cover-up. Drawn as a flat-colored block during
@@ -246,6 +251,7 @@ export type LayerId =
   | "site"
   | "cable"
   | "conduit"
+  | "drop"
   | "annotation";
 
 export interface Layer {
@@ -837,6 +843,42 @@ export interface FreehandMarkup extends BaseMarkup {
   thickness: number;
 }
 
+/** Service carried on a drop jack. */
+export type DropService = "data" | "poe" | "voice" | "coax" | "fiber";
+
+/** Where a drop faceplate is mounted. */
+export type DropMount = "wall" | "floor" | "ceiling" | "pole" | "box";
+
+/** A network drop — documentation-only markup marking where a data jack
+ *  must be installed. One drop = exactly one jack; drops placed at the
+ *  same location share a faceplate grouping (`faceplateId`, 1–6 jacks).
+ *  The faceplate is not an entity of its own: selection, movement,
+ *  deletion, and report grouping all derive the group from the id.
+ *  Drops never affect the bid — they carry no pricing or labor. */
+export interface DropMarkup extends BaseMarkup {
+  kind: "drop";
+  /** Drop number, e.g. "D-001" — unique per project, stable once
+   *  assigned. Deleting a drop leaves a gap; numbers never re-sequence. */
+  number: string;
+  /** Faceplate group shared by 1–6 co-located drops. */
+  faceplateId: string;
+  x: number;
+  y: number;
+  /** Label pill offset from the plate center, in PDF user units —
+   *  mirrors the device-tag pill (draggable, honored by the export). */
+  labelOffsetX?: number;
+  labelOffsetY?: number;
+  /** Jack/outlet type, e.g. "Cat6 keystone". Free-form by design —
+   *  vendor variety is too wide for an enum. */
+  jackType?: string;
+  /** Service carried on this jack. */
+  service?: DropService;
+  /** Mount location for the faceplate. */
+  mount?: DropMount;
+  /** Install height above finished floor, in inches (48 = ADA). */
+  heightInches?: number;
+}
+
 export type ScheduleTargetKind = "device" | "container" | "cable";
 export type ScheduleBlockMode = "compact" | "detailed";
 export type ScheduleBlockPreset = "auto" | "connections" | "routing" | "config";
@@ -867,6 +909,7 @@ export type Markup =
   | ArrowMarkup
   | PolygonMarkup
   | FreehandMarkup
+  | DropMarkup
   | ScheduleMarkup;
 
 /** Markup kind discriminator alias — handy for the export-visibility map
@@ -990,7 +1033,8 @@ export type ReportScope =
   | "racks"
   | "rackPlacements"
   | "sheets"
-  | "ports";
+  | "ports"
+  | "drops";
 
 export type ReportFilterOp =
   | "eq"
@@ -1047,6 +1091,10 @@ export interface ReportTemplate {
   groupBy?: string[];
   /** Stable sort key list. */
   sortBy?: Array<{ field: string; dir: "asc" | "desc" }>;
+  /** Render a totals line (row count + group count) in the
+   *  document-layout formats (PDF, XLSX, HTML, Markdown). CSV and
+   *  JSON stay pure row data. */
+  showTotals?: boolean;
   /** Output formats to generate when the user clicks "Generate". */
   formats: ReportFormat[];
   /** Branding overrides for non-tabular outputs (PDF, HTML). */
@@ -1130,6 +1178,9 @@ export interface Project {
   /** Optional physical-label numbering scheme for generated cable labels.
    *  Missing values fall back to C-001, F-001, and CN-001 sequences. */
   cableLabelScheme?: CableLabelScheme;
+  /** Optional numbering scheme for drop numbers. Missing values fall
+   *  back to the D-001 sequence. Affects newly placed drops only. */
+  dropLabelScheme?: DropLabelScheme;
   createdAt: number;
   updatedAt: number;
 }
@@ -1150,6 +1201,7 @@ export const DEFAULT_LAYERS: Layer[] = [
   { id: "site", label: "Site & Fiber", visible: true, locked: false },
   { id: "cable", label: "Cable Runs", visible: true, locked: false },
   { id: "conduit", label: "Conduit Runs", visible: true, locked: false },
+  { id: "drop", label: "Drops", visible: true, locked: false },
   { id: "annotation", label: "Annotation", visible: true, locked: false },
 ];
 
@@ -1330,6 +1382,7 @@ interface State {
   removeMaskRegion: (sheetId: string, maskId: string) => void;
   setSheetBgColor: (sheetId: string, color: string) => void;
   setBrandTheme: (theme: BrandTheme) => void;
+  setDropLabelScheme: (scheme: DropLabelScheme) => void;
   /** Patch the per-project branding overrides. Merges into existing
    *  `project.branding`; pass an empty object via `resetBranding()` to
    *  drop back to the bundled defaults. */
@@ -1399,6 +1452,13 @@ interface State {
   duplicateSelectedMarkups: () => string[];
   updateMarkup: (id: string, patch: Partial<Markup>) => void;
   moveDeviceMarkup: (id: string, x: number, y: number) => void;
+  /** Place a faceplate of 1–6 drops at one location. One history entry. */
+  placeDropFaceplate: (x: number, y: number, jackCount: number) => void;
+  /** Move a drop's whole faceplate (jacks move together). */
+  moveDropMarkup: (id: string, x: number, y: number) => void;
+  /** Jacks-per-faceplate chosen in the drop tool's stepper (1–6). */
+  dropJackCount: number;
+  setDropJackCount: (n: number) => void;
   setAllDeviceMarkupsLocked: (locked: boolean) => number;
   attachRouteInfrastructureToRun: (
     deviceId: string,
@@ -1656,6 +1716,7 @@ export const useProjectStore = create<State>()(
     freehandColor: "#F4B740",
     freehandThickness: 2,
     freehandErasing: false,
+    dropJackCount: 1,
     cableRunDraft: null,
     cableRunBulkBranch: null,
     runLabelsVisible: false,
@@ -2140,6 +2201,26 @@ export const useProjectStore = create<State>()(
               project: {
                 ...s.project,
                 brandTheme: theme,
+                updatedAt: Date.now(),
+              },
+            }
+          : s,
+      ),
+
+    setDropLabelScheme: (scheme) =>
+      set((s) =>
+        s.project
+          ? {
+              project: {
+                ...s.project,
+                // Empty fields fall through to the D-001 defaults at
+                // resolve time — strip them so the stored scheme stays
+                // minimal. Existing drop numbers are never rewritten.
+                dropLabelScheme: {
+                  prefix: scheme.prefix?.trim() || undefined,
+                  separator: scheme.separator ?? undefined,
+                  minDigits: scheme.minDigits ?? undefined,
+                },
                 updatedAt: Date.now(),
               },
             }
@@ -2850,6 +2931,8 @@ export const useProjectStore = create<State>()(
             ? assignGeneratedCableLabels([m], s.project)[0]
             : m.kind === "device"
               ? withDefaultNetworkConfig(m, s.project)
+            : m.kind === "drop"
+              ? withDropIdentity(m, s.project)
             : m;
         const hints =
           m.kind === "device"
@@ -3067,6 +3150,103 @@ export const useProjectStore = create<State>()(
         };
       }),
 
+    placeDropFaceplate: (x, y, jackCount) =>
+      set((s) => {
+        if (!s.project || !s.activeSheetId) return s;
+        const count = Math.max(1, Math.min(6, Math.floor(jackCount)));
+        const faceplateId = uid();
+        const drops = assignGeneratedDropNumbers(
+          Array.from({ length: count }, () => ({
+            id: uid(),
+            kind: "drop" as const,
+            layer: "drop" as LayerId,
+            number: "",
+            faceplateId,
+            x,
+            y,
+          })),
+          s.project,
+        );
+        return {
+          history: historyAfterProjectChange(s.history, s.project),
+          project: {
+            ...s.project,
+            sheets: s.project.sheets.map((sh) =>
+              sh.id === s.activeSheetId
+                ? { ...sh, markups: [...sh.markups, ...drops] }
+                : sh,
+            ),
+            updatedAt: Date.now(),
+          },
+          selectedMarkupIds: drops.map((d) => d.id),
+          selectedBrand: null,
+        };
+      }),
+
+    moveDropMarkup: (id, x, y) =>
+      set((s) => {
+        if (!s.project || !s.activeSheetId) return s;
+        const sheet = s.project.sheets.find((sh) => sh.id === s.activeSheetId);
+        const drop = sheet?.markups.find(
+          (m): m is DropMarkup => m.kind === "drop" && m.id === id,
+        );
+        if (!sheet || !drop) return s;
+        if (drop.locked) {
+          const now = Date.now();
+          const lockMoveHint =
+            s.lockMoveHint && now - s.lockMoveHint.shownAt < 1400
+              ? s.lockMoveHint
+              : {
+                  message: "Locked. Unlock to move.",
+                  shownAt: now,
+                  pulseKey: now,
+                  scope: "selection" as const,
+                  targetIds: [drop.id],
+                };
+          return { ...s, lockMoveHint };
+        }
+        // The faceplate is the movement unit: every jack on the plate
+        // shares one position, so all of them move to the target together.
+        // Cable runs landed on the plate follow it, exactly like devices.
+        return {
+          history: historyAfterProjectChange(s.history, s.project),
+          project: {
+            ...s.project,
+            sheets: s.project.sheets.map((sh) =>
+              sh.id === s.activeSheetId
+                ? {
+                    ...sh,
+                    markups: sh.markups.map((m) => {
+                      if (m.kind === "drop" && m.faceplateId === drop.faceplateId) {
+                        return { ...m, x, y };
+                      }
+                      if (m.kind !== "cable") return m;
+                      let nextCable = m;
+                      for (const member of sheet.markups) {
+                        if (member.kind !== "drop" || member.faceplateId !== drop.faceplateId) {
+                          continue;
+                        }
+                        nextCable = cableWithMovedAttachment(
+                          nextCable,
+                          member.id,
+                          member.number,
+                          x,
+                          y,
+                        );
+                      }
+                      return nextCable;
+                    }),
+                  }
+                : sh,
+            ),
+            updatedAt: Date.now(),
+          },
+        };
+      }),
+
+    setDropJackCount: (n) =>
+      set({ dropJackCount: Math.max(1, Math.min(6, Math.floor(n))) }),
+
     setAllDeviceMarkupsLocked: (locked) => {
       let changed = 0;
       set((s) => {
@@ -3180,18 +3360,23 @@ export const useProjectStore = create<State>()(
     deleteMarkup: (id) =>
       set((s) => {
         if (!s.project || !s.activeSheetId) return s;
-        const project = projectWithoutMarkups(s.project, s.activeSheetId, new Set([id]));
+        const ids = dropFaceplateExpandedIds(s.project, s.activeSheetId, new Set([id]));
+        const project = projectWithoutMarkups(s.project, s.activeSheetId, ids);
         return {
           history: historyAfterProjectChange(s.history, s.project),
           project,
-          selectedMarkupIds: s.selectedMarkupIds.filter((sid) => sid !== id),
+          selectedMarkupIds: s.selectedMarkupIds.filter((sid) => !ids.has(sid)),
         };
       }),
 
     deleteSelected: () =>
       set((s) => {
         if (!s.project || !s.activeSheetId) return s;
-        const ids = new Set(s.selectedMarkupIds);
+        const ids = dropFaceplateExpandedIds(
+          s.project,
+          s.activeSheetId,
+          new Set(s.selectedMarkupIds),
+        );
         // The selection set is a flat list of IDs that may refer to either
         // markups OR masks on the active sheet — delete from both so the
         // backspace / delete key reliably removes whatever is highlighted.
@@ -3853,6 +4038,16 @@ export const useProjectStore = create<State>()(
   })),
 );
 
+/** Ensure a drop placed through the generic markup path still gets a
+ *  number and a faceplate group. The drop tool uses placeDropFaceplate,
+ *  which handles both for the whole group in a single history entry. */
+function withDropIdentity(m: DropMarkup, project: Project): DropMarkup {
+  const numbered = m.number?.trim()
+    ? m
+    : assignGeneratedDropNumbers([m], project)[0];
+  return numbered.faceplateId ? numbered : { ...numbered, faceplateId: uid() };
+}
+
 function nextTagForMarkups(markups: Markup[], shortCode: string): string {
   const prefix = shortCode.trim() || "X";
   const re = new RegExp(`^${escapeRegExp(prefix)}-(\\d+)$`);
@@ -4055,6 +4250,30 @@ function reanchorConnectionCable(
       }),
     })),
   };
+}
+
+/** Deleting a drop deletes its whole faceplate — jacks live and die
+ *  together. Returns the id set expanded with faceplate siblings. */
+function dropFaceplateExpandedIds(
+  project: Project,
+  sheetId: string,
+  ids: Set<string>,
+): Set<string> {
+  const sheet = project.sheets.find((sh) => sh.id === sheetId);
+  if (!sheet) return ids;
+  if (!sheet.markups.some((m) => m.kind === "drop" && ids.has(m.id))) {
+    return ids;
+  }
+  const expanded = new Set(ids);
+  for (const markup of sheet.markups) {
+    if (markup.kind !== "drop" || !expanded.has(markup.id)) continue;
+    for (const other of sheet.markups) {
+      if (other.kind === "drop" && other.faceplateId === markup.faceplateId) {
+        expanded.add(other.id);
+      }
+    }
+  }
+  return expanded;
 }
 
 function projectWithoutMarkups(

@@ -24,6 +24,7 @@ import {
   Redo2,
   Lock,
   LockOpen,
+  Plug,
 } from "lucide-react";
 import { useProjectStore, type ToolId } from "../store/projectStore";
 import { useFlowHintClass } from "../hooks/useFlowHints";
@@ -70,6 +71,7 @@ const TOOLS: {
   { id: "polygon", label: "Polygon", icon: Hexagon, hotkey: "P" },
   { id: "arrow", label: "Arrow", icon: ArrowUpRight, hotkey: "A" },
   { id: "freehand", label: "Freehand", icon: Pen, hotkey: "F" },
+  { id: "drop", label: "Network Drop", icon: Plug, hotkey: "J" },
   { id: "mask", label: "Mask / Cover-up", icon: Eraser, hotkey: "X" },
 ];
 
@@ -103,6 +105,8 @@ export function Toolbar() {
   const runLabelsVisible = useProjectStore((s) => s.runLabelsVisible);
   const toggleRunLabelsVisible = useProjectStore((s) => s.toggleRunLabelsVisible);
   const cableRunBulkBranch = useProjectStore((s) => s.cableRunBulkBranch);
+  const dropJackCount = useProjectStore((s) => s.dropJackCount);
+  const setDropJackCount = useProjectStore((s) => s.setDropJackCount);
   const project = useProjectStore((s) => s.project);
   const lockMoveHint = useProjectStore((s) => s.lockMoveHint);
   const clearLockMoveHint = useProjectStore((s) => s.clearLockMoveHint);
@@ -397,6 +401,35 @@ export function Toolbar() {
               </datalist>
             </>
           )}
+        </>
+      )}
+      {activeTool === "drop" && (
+        <>
+          <div className="w-px h-6 bg-white/10 mx-1" />
+          <div
+            className="flex items-center gap-1"
+            title="Jacks per faceplate (1–6) — each jack is its own numbered drop"
+          >
+            <button
+              onClick={() => setDropJackCount(dropJackCount - 1)}
+              disabled={dropJackCount <= 1}
+              className="tool-btn disabled:opacity-35 disabled:cursor-not-allowed"
+              title="Fewer jacks"
+            >
+              −
+            </button>
+            <span className="text-[10px] font-mono text-ink-300 whitespace-nowrap min-w-[4.5rem] text-center">
+              {dropJackCount} jack{dropJackCount === 1 ? "" : "s"} / plate
+            </span>
+            <button
+              onClick={() => setDropJackCount(dropJackCount + 1)}
+              disabled={dropJackCount >= 6}
+              className="tool-btn disabled:opacity-35 disabled:cursor-not-allowed"
+              title="More jacks"
+            >
+              +
+            </button>
+          </div>
         </>
       )}
       {activeTool === "freehand" && (

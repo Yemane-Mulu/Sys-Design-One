@@ -271,8 +271,33 @@ By explicit user instruction ("I want what we created as the main"), the fork's 
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
   - No dev/preview/watch server started; no secrets written
-  - No dev/preview/watch server started; no secrets written
+
+## Patch 15 — Drops feature: first-class, documentation-only network drops (user-directed)
+
+- **Source:** user instruction, 2026-11-04 — "build" (approving the `add-drops` OpenSpec change after plan review; decisions 1A/2A/3A/4A, all fields, report-scope-with-no-bid, faceplate semantics)
+- **Purpose:** mark where network drops must be installed during client walkthroughs — numbered per project (D-001), grouped onto faceplates of 1–6 jacks, cable-terminable, reportable through the Drops Schedule — with **zero effect on the bid** (user decision 2026-11-04: "I dont need this adding to the cost or the bid").
+- **Reason:** free-text/callout markup was the only way to note "data needed here" — disconnected from numbering, cabling, and reporting. Drops are documentation for the client and whoever runs the cable, not billable work performed by this shop.
+- **Changed files:**
+  - `src/store/projectStore.ts` — `DropMarkup` in the `Markup` union (one drop = one jack; fields: number, faceplateId, jackType, service, mount, heightInches, notes, labelOffsetX/Y); `ToolId` "drop"; `LayerId` "drop" + DEFAULT_LAYERS entry; `ReportScope` "drops"; `dropLabelScheme` project setting + `setDropLabelScheme`; `placeDropFaceplate` (1–6 jacks, one history entry); `moveDropMarkup` (whole-faceplate move, attached cable runs follow like devices); `deleteMarkup`/`deleteSelected` expand to faceplate siblings; `addMarkup` enrichment fills number + faceplateId
+  - `src/lib/dropLabels.ts` (new) — `DropLabelScheme` (D / - / 3 defaults) + collision-tolerant next-number assignment mirroring `cableLabels.ts`; per-project sequence via `allDropMarkups`
+  - `src/lib/projectFile.ts` — `"drop"` in `ALLOWED_MARKUP_KINDS`; validator requires number + faceplateId, checks service/mount unions when present, finite heightInches; identifier-class keys extended (number, faceplateId, jackType, service, mount)
+  - `src/lib/validation.ts` — duplicate drop-number warning (`duplicate-drop-number`, scope "drop")
+  - `src/lib/cableRuns.ts` — `dropCableEndpoint` (first jack by number without a cable; endpoint label = drop number), `compareDropNumbers` natural sort; `endpointFromMarkup` routes drops
+  - `src/components/Toolbar.tsx`, `src/hooks/useGlobalHotkeys.ts`, `src/hooks/useToolGesture.tsx`, `src/components/CommandPalette.tsx` — drop tool, `J` hotkey, jack-count stepper (1–6), click-to-place, command-palette entry; `nudgeMarkup` drop case
+  - `src/components/MarkupLayer.tsx` — faceplate renders once (first member by number): midnight plate with blue stroke + amber jack dots (1–6 layouts), number-range label pill (device-tag pattern: draggable offset, ×N badge); group selection on click; `moveDropMarkup` on drag
+  - `src/components/PropertiesPanel.tsx` — per-jack editor (Drop #, jack type, service, mount, height, notes shown on the Drops Schedule) + faceplate-group editor for drops-only selections; `describeMarkup` drop entry
+  - `src/components/SelectionActionBar.tsx`, `src/components/LeftRail.tsx` — selection label + bounding box cases; "Drops" layer list entry
+  - `src/components/SettingsDrawer.tsx` — Drop Numbering section (prefix / separator / digits; blank falls back to D-001; affects new drops only)
+  - `src/reports/engine.ts` — `selectDrops` flattener (number, faceplateId, faceplateJackCount, jackType, service, mount, heightInches, notes, sheet); `reportTotalsLine`; `dropFaceplateGroupLabel`; `ReportTemplate.showTotals`
+  - `src/reports/fieldCatalog.ts`, `src/reports/starterTemplates.ts` — `drops` scope fields + "Drops Schedule" starter template (grouped by faceplate, notes column, showTotals)
+  - `src/reports/formats/pdf.ts`, `markdown.ts`, `html.ts` — totals line when `showTotals`; `src/reports/formats/xlsx.ts` — totals row on the Summary sheet + drops group sheets named by drop-number range instead of the faceplateId uid
+  - `src/export/exportMarkupPdf.ts` — drop rendering in the markup PDF (plate, jack dots, label pill honoring label offsets), mirroring the canvas node
+  - `README.md` — hotkeys table gains `J` (Network Drop); markup-tools feature row lists network drop
+  - `openspec/changes/add-drops/` — proposal, delta spec, design, tasks (the approved change record)
+  - `tests/dropLabels.test.ts`, `tests/dropProjectFile.test.ts`, `tests/drops.test.ts` (new) — numbering (defaults, next-number, gaps/stability, per-project, scheme change applies to new drops only, collision tolerance), validator (pre-drop back-compat, round-trip, malformed drop rejection), cable association (first-jack-without-a-cable, labels, fallback), reports (scope rows, template grouping, totals, all six formats, CSV/JSON purity), bid isolation (identical totals with and without drops)
+  - `tests/projectFileValidation.test.ts` — the pinned `ALLOWED_MARKUP_KINDS` exact-list assertion extended with `"drop"`, required by this change's file-compatibility requirement; the assertion still pins the complete exact list (no test weakened, skipped, or deleted)
+- **Bid isolation (explicit):** `src/lib/bid.ts` is untouched — it reads only `device` and `cable` markups; drops fall through adding nothing. No drop pricing, labor, or rate field exists anywhere. `tests/drops.test.ts` asserts identical bid totals (all seven totals fields + line arrays) with and without drops.
 - **Verification (2026-11-04):**
-  - `tsc -b` (Type_Check): **passed** — local run
-  - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
-  - No dev/preview/watch server started; no secrets written
+  - `tsc -b` (Type_Check): **passed** — local run, repeatedly during the build and clean at the end
+  - `npm test` / `npm run build`: **via CI** (no local runs per user direction)
+  - No dev/preview/watch server started; no secrets written; local test files are not type-checked by `tsc -b` (tsconfig includes `src` only) — CI's vitest run exercises them

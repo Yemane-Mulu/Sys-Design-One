@@ -58,6 +58,8 @@ export function useToolGesture(
   const freehandColor = useProjectStore((s) => s.freehandColor);
   const freehandThickness = useProjectStore((s) => s.freehandThickness);
   const freehandErasing = useProjectStore((s) => s.freehandErasing);
+  const dropJackCount = useProjectStore((s) => s.dropJackCount);
+  const placeDropFaceplate = useProjectStore((s) => s.placeDropFaceplate);
   const addMarkup = useProjectStore((s) => s.addMarkup);
   const attachRouteInfrastructureToRun = useProjectStore(
     (s) => s.attachRouteInfrastructureToRun,
@@ -265,6 +267,12 @@ export function useToolGesture(
           : {}),
       });
       if (snap) attachRouteInfrastructureToRun(id, snap.cable.id, snap.endpoint);
+      return;
+    }
+    if (tool === "drop") {
+      // Documentation-only network drops: place the whole faceplate in
+      // one history entry. Each jack is its own numbered drop markup.
+      placeDropFaceplate(c.x, c.y, dropJackCount);
       return;
     }
     if (tool === "calibrate") {

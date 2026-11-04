@@ -13,7 +13,7 @@
 
 import * as XLSX from "xlsx";
 import type { ReportResult } from "../engine";
-import { formatCell } from "../engine";
+import { formatCell, dropFaceplateGroupLabel, reportTotalsLine } from "../engine";
 import { getByPath } from "../paths";
 
 function safeSheetName(name: string): string {
@@ -28,20 +28,29 @@ function safeSheetName(name: string): string {
 export function reportToXlsxBuffer(result: ReportResult): Uint8Array {
   const wb = XLSX.utils.book_new();
   const headers = result.columns.map((c) => c.header);
+  const totals = reportTotalsLine(result);
 
   if (result.meta.template.groupBy && result.meta.template.groupBy.length > 0) {
-    // Summary sheet — group key + row count
+    // Summary sheet — group key + row count. Drops label their groups by
+    // drop-number range (e.g. "D-001–D-003") instead of the opaque
+    // faceplateId so every sheet name reads human.
+    const dropsScope = result.scope === "drops";
     const sumRows: Array<Array<string | number>> = [
-      [...result.meta.template.groupBy, "Rows"],
+      dropsScope ? ["Faceplate", "Jacks"] : [...result.meta.template.groupBy, "Rows"],
     ];
     for (const g of result.groups) {
-      sumRows.push([...g.key, g.rows.length]);
+      sumRows.push([dropsScope ? dropFaceplateGroupLabel(g) : g.key.join(" · "), g.rows.length]);
     }
+    if (totals) sumRows.push(["Total", result.rowCount]);
     const sumWs = XLSX.utils.aoa_to_sheet(sumRows);
     XLSX.utils.book_append_sheet(wb, sumWs, "Summary");
 
     for (const g of result.groups) {
-      const sheetName = safeSheetName(g.key.join(" - ") || "All");
+      const sheetName = safeSheetName(
+        dropsScope
+          ? dropFaceplateGroupLabel(g)
+          : g.key.join(" - ") || "All",
+      );
       const rows: Array<Array<string>> = [headers];
       for (const row of g.rows) {
         rows.push(
@@ -64,6 +73,7 @@ export function reportToXlsxBuffer(result: ReportResult): Uint8Array {
         );
       }
     }
+    if (totals) rows.push([totals]);
     const ws = XLSX.utils.aoa_to_sheet(rows);
     XLSX.utils.book_append_sheet(
       wb,

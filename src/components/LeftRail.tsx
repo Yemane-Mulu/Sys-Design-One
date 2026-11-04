@@ -673,6 +673,7 @@ function ExportVisibilityPanel() {
     { kind: "polygon", label: "Polygons" },
     { kind: "arrow", label: "Arrows" },
     { kind: "freehand", label: "Freehand" },
+    { kind: "drop", label: "Drops" },
     { kind: "schedule", label: "Schedules" },
   ];
 

@@ -84,6 +84,7 @@ describe("validation constants", () => {
       "arrow",
       "polygon",
       "freehand",
+      "drop",
       "schedule",
     ]);
   });

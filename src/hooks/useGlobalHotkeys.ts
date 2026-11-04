@@ -15,6 +15,7 @@ const KEY_TO_TOOL: Record<string, ToolId> = {
   a: "arrow",
   p: "polygon",
   f: "freehand",
+  j: "drop",
 };
 
 export function useGlobalHotkeys() {
@@ -132,6 +133,7 @@ function nudgeMarkup(
     case "text":
     case "rect":
     case "cloud":
+    case "drop":
       updateMarkup(m.id, { x: (m as any).x + dx, y: (m as any).y + dy });
       return;
     case "callout":

@@ -24,6 +24,7 @@ import type {
   CableMarkup,
   DeviceConnection,
   DeviceMarkup,
+  DropMarkup,
   Project,
   Rack,
   ReportColumn,
@@ -50,6 +51,8 @@ import {
   internalEndpointPortLabel,
 } from "../lib/connections";
 import { generatedCableLabelsForProject } from "../lib/cableLabels";
+import { compareDropNumbers } from "../lib/cableRuns";
+import { normalizeDropNumber } from "../lib/dropLabels";
 import { validationWarningsByEntity } from "../lib/validation";
 import { rackDevicesById } from "../data/rackDevices";
 import { fieldLabel } from "./fieldCatalog";
@@ -260,6 +263,43 @@ function selectRackPlacements(project: Project): Row[] {
   return rows;
 }
 
+function selectDrops(project: Project): Row[] {
+  // One row per jack — a faceplate's drops share a `faceplateId`, so
+  // grouping the report by that field yields one row-block per plate.
+  const rows: Row[] = [];
+  const validationWarnings = validationWarningsByEntity(project);
+  for (const sheet of project.sheets) {
+    const drops = sheet.markups.filter(
+      (m): m is DropMarkup => m.kind === "drop",
+    );
+    const jacksByFaceplate = new Map<string, number>();
+    for (const drop of drops) {
+      jacksByFaceplate.set(
+        drop.faceplateId,
+        (jacksByFaceplate.get(drop.faceplateId) ?? 0) + 1,
+      );
+    }
+    for (const drop of drops) {
+      rows.push({
+        id: drop.id,
+        number: drop.number,
+        faceplateId: drop.faceplateId,
+        faceplateJackCount: jacksByFaceplate.get(drop.faceplateId) ?? 1,
+        jackType: drop.jackType ?? "",
+        service: drop.service ?? "",
+        mount: drop.mount ?? "",
+        heightInches: drop.heightInches,
+        notes: drop.notes ?? "",
+        sheetName: sheet.name,
+        x: drop.x,
+        y: drop.y,
+        validationWarnings: validationWarnings.get(drop.id) ?? "",
+      });
+    }
+  }
+  return rows;
+}
+
 function selectSheets(project: Project): Row[] {
   const rows: Row[] = [];
   for (const sh of project.sheets as Sheet[]) {
@@ -339,6 +379,8 @@ export function selectEntities(project: Project, scope: ReportScope): Row[] {
       return selectSheets(project);
     case "ports":
       return selectPorts(project);
+    case "drops":
+      return selectDrops(project);
   }
 }
 
@@ -478,6 +520,33 @@ export function runReport(project: Project, template: ReportTemplate): ReportRes
       generatedAt: new Date().toISOString(),
     },
   };
+}
+
+/** One-line totals summary for the document-layout formats (PDF,
+ *  XLSX, HTML, Markdown). Returns null when the template doesn't ask
+ *  for totals. Drops name their rows jacks and their groups
+ *  faceplates; every other scope stays generic. */
+export function reportTotalsLine(result: ReportResult): string | null {
+  if (!result.meta.template.showTotals) return null;
+  const rows = result.rowCount;
+  const groups = result.groups.length;
+  if (result.scope === "drops") {
+    return `Total: ${rows} jack${rows === 1 ? "" : "s"} on ${groups} faceplate${groups === 1 ? "" : "s"}`;
+  }
+  return `Total: ${rows} row${rows === 1 ? "" : "s"} in ${groups} group${groups === 1 ? "" : "s"}`;
+}
+
+/** Human label for a drops group: the range of drop numbers it holds
+ *  (e.g. "D-001–D-004"). Used as the XLSX group-sheet name so sheets
+ *  read by plate range instead of the opaque faceplateId uid. */
+export function dropFaceplateGroupLabel(group: ReportGroup): string {
+  const numbers = group.rows
+    .map((row) => normalizeDropNumber((row as { number?: unknown }).number as string | undefined))
+    .filter(Boolean)
+    .sort(compareDropNumbers);
+  if (numbers.length === 0) return "Faceplate";
+  if (numbers.length === 1) return numbers[0];
+  return `${numbers[0]}–${numbers[numbers.length - 1]}`;
 }
 
 /** Format a cell value for tabular outputs. Driven by the column's

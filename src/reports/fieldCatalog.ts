@@ -259,6 +259,21 @@ const PORT_FIELDS: FieldDef[] = [
   { path: "validationWarnings", label: "Validation Warnings", type: "string" },
 ];
 
+const DROP_FIELDS: FieldDef[] = [
+  { path: "number", label: "Drop #", type: "string", help: "Drop number, e.g. D-001 — one per jack" },
+  { path: "faceplateId", label: "Faceplate", type: "string", help: "Grouping id — drops sharing it sit on one faceplate" },
+  { path: "faceplateJackCount", label: "Jacks on Plate", type: "number", help: "How many jacks share this drop's faceplate (1–6)" },
+  { path: "jackType", label: "Jack Type", type: "string", help: "Outlet type, e.g. Cat6 keystone" },
+  { path: "service", label: "Service", type: "enum", enumValues: ["data", "poe", "voice", "coax", "fiber"] },
+  { path: "mount", label: "Mount", type: "enum", enumValues: ["wall", "floor", "ceiling", "pole", "box"] },
+  { path: "heightInches", label: "Height (AFF in)", type: "number", help: "Install height above finished floor, inches" },
+  { path: "notes", label: "Notes", type: "string" },
+  { path: "sheetName", label: "Sheet", type: "string" },
+  { path: "x", label: "X", type: "number" },
+  { path: "y", label: "Y", type: "number" },
+  { path: "validationWarnings", label: "Validation Warnings", type: "string" },
+];
+
 export const FIELD_CATALOG: Record<ReportScope, FieldDef[]> = {
   devices: DEVICE_FIELDS,
   cables: CABLE_FIELDS,
@@ -268,6 +283,7 @@ export const FIELD_CATALOG: Record<ReportScope, FieldDef[]> = {
   rackPlacements: RACK_PLACEMENT_FIELDS,
   sheets: SHEET_FIELDS,
   ports: PORT_FIELDS,
+  drops: DROP_FIELDS,
 };
 
 export const SCOPE_LABEL: Record<ReportScope, string> = {
@@ -279,6 +295,7 @@ export const SCOPE_LABEL: Record<ReportScope, string> = {
   rackPlacements: "Rack Placements",
   sheets: "Sheets",
   ports: "Device Ports",
+  drops: "Drops",
 };
 
 /** Resolve the canonical label for a dotted-path field — used in

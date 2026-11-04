@@ -7,7 +7,7 @@
  */
 
 import type { ReportResult } from "../engine";
-import { formatCell } from "../engine";
+import { formatCell, reportTotalsLine } from "../engine";
 import { getByPath } from "../paths";
 import { SCOPE_LABEL } from "../fieldCatalog";
 
@@ -41,6 +41,7 @@ const STYLES = `
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafbfc; }
   footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; color: #5E6B85; font-size: 12px; font-family: ui-monospace, monospace; display: flex; justify-content: space-between; }
+  .totals { margin: 16px 0 0; font-weight: 600; color: #1B2433; font-size: 14px; }
   @media print { body { background: #ffffff; } .page { padding: 16px; } header { page-break-after: avoid; } h2 { page-break-after: avoid; } tr { page-break-inside: avoid; } }
 `;
 
@@ -77,6 +78,8 @@ export function reportToHtml(result: ReportResult): string {
     ? `<p class="desc">${escapeHtml(result.meta.template.description)}</p>`
     : "";
   const footer = result.meta.template.branding?.footer ?? "";
+  const totals = reportTotalsLine(result);
+  const totalsHtml = totals ? `<p class="totals">${escapeHtml(totals)}</p>` : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -98,6 +101,7 @@ export function reportToHtml(result: ReportResult): string {
       ${desc}
     </header>
     ${groupSections.join("\n")}
+    ${totalsHtml}
     <footer>
       <span>${escapeHtml(footer)}</span>
       <span>DesignOne System Designer · Custom Report</span>

@@ -166,6 +166,8 @@ function labelFor(m: Markup): string {
       return "Polygon";
     case "freehand":
       return "Freehand";
+    case "drop":
+      return "Drop";
     case "schedule":
       return "Schedule";
   }
@@ -223,6 +225,9 @@ function computeBBox(items: Markup[]): BBox | null {
       case "arrow":
         expand(m.p1.x, m.p1.y);
         expand(m.p2.x, m.p2.y);
+        break;
+      case "drop":
+        expand(m.x, m.y, 7);
         break;
     }
   }

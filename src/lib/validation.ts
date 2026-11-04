@@ -28,6 +28,7 @@ export type ValidationSeverity = "warning" | "error";
 export type ValidationScope =
   | "cable"
   | "device"
+  | "drop"
   | "connection"
   | "rack"
   | "sheet"
@@ -161,6 +162,7 @@ export function validateProject(project: Project): ValidationIssue[] {
   const cableTags: DuplicateCandidate[] = [];
   const switchPortText: DuplicateCandidate[] = [];
   const schedules: DuplicateCandidate[] = [];
+  const dropNumbers: DuplicateCandidate[] = [];
 
   for (const sheet of project.sheets) {
     for (const markup of sheet.markups) {
@@ -169,6 +171,13 @@ export function validateProject(project: Project): ValidationIssue[] {
           markupId: markup.id,
           cableMarkupId: markup.id,
           detail: labelDetail("Cable run", markup.physicalLabel, markup.id),
+        });
+        continue;
+      }
+      if (markup.kind === "drop") {
+        pushIfValue(dropNumbers, markup.number, markup.id, sheet.id, {
+          markupId: markup.id,
+          detail: `Drop ${markup.number}`,
         });
         continue;
       }
@@ -219,6 +228,15 @@ export function validateProject(project: Project): ValidationIssue[] {
     code: "duplicate-value",
     message: (value, count) =>
       `Duplicate cable physical label "${value}" is used by ${count} runs.`,
+  });
+  addDuplicateIssues(issues, {
+    candidates: dropNumbers,
+    scope: "drop",
+    field: "number",
+    idPrefix: "duplicate-drop-number",
+    code: "duplicate-value",
+    message: (value, count) =>
+      `Duplicate drop number "${value}" is used by ${count} drops. Numbers must be unique so schedules and handouts stay unambiguous.`,
   });
   addDuplicateIssues(issues, {
     candidates: deviceTags,
