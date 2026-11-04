@@ -10,6 +10,7 @@ import {
   ALLOWED_MARKUP_KINDS,
   PROJECT_TEXT_LIMITS,
 } from "../src/lib/projectFile";
+import type { DeviceMarkup } from "../src/store/projectStore";
 
 function stubObjectUrls() {
   return vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:knoxnet-test");
@@ -238,7 +239,8 @@ describe("boundary and payload-exemption cases pass", () => {
         p.project.sheets[0].markups[0].tag = "A".repeat(500);
       }),
     );
-    expect(project.sheets[0]?.markups[0]?.tag).toHaveLength(500);
+    const markup = project.sheets[0]?.markups[0] as DeviceMarkup | undefined;
+    expect(markup?.tag).toHaveLength(500);
   });
 
   it("accepts free-form strings at the 10,000-character limit", async () => {
@@ -248,7 +250,8 @@ describe("boundary and payload-exemption cases pass", () => {
         p.project.sheets[0].markups[0].labelOverride = "A".repeat(10_000);
       }),
     );
-    expect(project.sheets[0]?.markups[0]?.labelOverride).toHaveLength(10_000);
+    const markup = project.sheets[0]?.markups[0] as DeviceMarkup | undefined;
+    expect(markup?.labelOverride).toHaveLength(10_000);
   });
 
   it("never length-caps serialized SVG source or embedded logo payloads", async () => {
