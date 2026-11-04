@@ -134,7 +134,30 @@ A full sweep compared every `id:` literal in the pinned upstream catalogs (204 i
 - **`rackDeviceIdForNestedDevice()` in `src/lib/nesting.ts` (lines 272–287)** maps four legacy device ids (`net-switch-core`, `net-router`, `net-nvr`, `net-ups`) to rack ids (`sw-core-2u`, `rtr-edge`, `nvr-16`, `ups-1500`) absent from the supplied catalog. Inert by design: the default branch returns `null` and the UI uses the generic nested-bubble rendering — the same path every other unrecognized device takes. The retained pair `net-switch-poe` → `sw-cat-24` keeps the tested path working. No correction required.
 - **`ROUTE_INFRA_DEVICE_IDS` in `src/lib/cableRuns.ts` (lines 14–22)** lists seven site-infrastructure ids; two are retained (`site-pullbox`, `site-junction-box` — asserted by cableRuns.test.ts), five are now inert (`site-handhole`, `site-jbox-out`, `site-weatherproof-enclosure`, `site-fiber-splice`, `site-conduit`). Deferred observation: site-infrastructure devices from the supplied catalog are not treated as route infrastructure by that id list; extending the list is a `src/lib` change outside the two-file replacement scope and no acceptance criterion requires it. Recorded for future work, not corrected.
 
-Conclusion: the 11 retained records remain the complete proven-necessary correction set; no supplied value was altered.
+Conclusion: the 11 retained records remain the complete proven-necessary correction set; no supplied value was altered. *(Superseded by Patch 8 below after CI proof — see entry.)*
+
+## Patch 8 — Catalog compatibility corrections proven by CI (Req 10 AC 7/13)
+
+- **Source:** Requirement 10 corrections (fork spec: `device-catalogs`)
+- **Authorization:** Gate D flow approved 2026-11-04 ("push… GitHub Actions runs the full suite… I record the results in PATCHES.md") — the corrections below are proven by the CI validation failures that approval's run produced.
+- **Trigger:** CI run 41867484706 (`verify` #1, pushed at `63b138b`) failed the existing test suite with 7 findings across 4 files. Checkout, Node setup, and `npm ci` (lockfile install) all passed on the GitHub-hosted runner.
+- **Corrections (each recorded per AC 7/13):**
+
+  | # | CI finding | Root cause | Correction |
+  |---|---|---|---|
+  | 1 | `cableRuns.test.ts:184` — `devicesById["site-weatherproof-enclosure"]` undefined (label "Weatherproof Enclosure" expected) | A 12th upstream record referenced by an existing test, missed by the retention sweep (the sweep listed its cableRuns.test.ts reference but it was misclassified as inert) | Upstream record retained verbatim inside the supplied catalog: `site-weatherproof-enclosure`, label "Weatherproof Enclosure", shortCode WPE, category site, defaultCost 325, laborHours 1.75, upstream icon |
+  | 2–4 | `cableRuns.test.ts:790`, `scheduleBlocks.test.ts:183`, `reports.engine.test.ts:307` — `'ETH 0 (LAN)'` resolved where `'ETH 0 (PoE in)'` expected | The supplied catalog's rewrite of `inferDefaultPorts` omitted upstream's AP seeding rule (`code === "AP" \|\| code === "AP-O" \|\| code.startsWith("AP-")` → `[ETH0_POE_IN, eth1 LAN]`) | Upstream's complete `inferDefaultPorts` transplanted verbatim (AC 7: the supplied helper was incompatible with the pinned commit's tested contract); upstream's `POWER_DC` port const added alongside the existing templates |
+  | 5 | `reports.engine.test.ts:358` — expected 4 flattened ports, received 3 | Same AP seeding omission (2 seeded ports vs 1) | Same transplant |
+  | 6 | `catalogValidation.test.ts:33` — `devicesById[id]` not reference-equal to the array record | This fork's own new test asserted reference identity against a map that intentionally enriches values with inferred ports (`{ ...d, ports }` copies — by design in the supplied catalog) | Fork's own test corrected to assert semantic resolution (id + label); the rack map is reference-equal (`rackDevices.map((d) => [d.id, d])`) and its assertion is unchanged. No existing upstream test was weakened, skipped, or deleted |
+  | 7 | Runner annotation: Node 20 deprecation notice for `actions/checkout@v4` / `setup-node@v4` | GitHub Actions platform notice | No action required; recorded for awareness |
+
+- **Changed files:**
+  - `src/data/devices.ts` — upstream `POWER_DC` const added; supplied `inferDefaultPorts` replaced with the pinned upstream implementation (provenance comment included); `site-weatherproof-enclosure` retained verbatim
+  - `tests/catalogValidation.test.ts` — devicesById resolution assertion corrected to semantic resolution
+  - `PATCHES.md` — this entry
+- **Verification (2026-11-04):**
+  - `tsc -b` (Type_Check): **passed** — local run after corrections
+  - CI re-verification: pushed immediately after this commit; results appended below
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)

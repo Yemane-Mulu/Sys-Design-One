@@ -29,8 +29,13 @@ describe("device catalog validation", () => {
   });
 
   it("devicesById resolves every catalog record", () => {
+    // The supplied catalog enriches map values with inferred ports
+    // ({ ...d, ports }), so resolution is semantic, not reference-identity.
     for (const d of devices) {
-      expect(devicesById[d.id], d.id).toBe(d);
+      const resolved = devicesById[d.id];
+      expect(resolved, d.id).toBeDefined();
+      expect(resolved?.id, d.id).toBe(d.id);
+      expect(resolved?.label, d.id).toBe(d.label);
     }
   });
 

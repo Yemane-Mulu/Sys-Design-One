@@ -1,4 +1,4 @@
-// KnoxNet device library â€” real hardware catalog (2026 research pass).
+// KnoxNet device library Ã¢â‚¬â€ real hardware catalog (2026 research pass).
 // Generated from verified current vendor product lines. Generic
 // placeholder SVG icons per subcategory; port specs cross-referenced
 // from the NetBox devicetype-library where the model exists there.
@@ -35,7 +35,7 @@ export interface DeviceType {
   ports?: PortSpec[];
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€ Shared port templates â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Shared port templates Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 const ETH0_POE_IN: PortSpec = {
   id: "eth0",
   label: "ETH 0 (PoE in)",
@@ -55,6 +55,12 @@ const RS485_BUS: PortSpec = {
   id: "rs485",
   label: "RS-485",
   kind: "serial",
+};
+
+const POWER_DC: PortSpec = {
+  id: "dc-in",
+  label: "DC In (12 V)",
+  kind: "power",
 };
 
 export const devices: DeviceType[] = [
@@ -5964,7 +5970,7 @@ export const devices: DeviceType[] = [
     ],
   },
 
-  // ───────── Compatibility records retained from the pinned upstream catalog ─────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€ Compatibility records retained from the pinned upstream catalog â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // KNOXNET-FIXES Req 10 AC 7/13: these ids are referenced by the existing test
   // suite and by src/lib/nesting.ts (RACK_DEVICE_ID), src/lib/cableRuns.ts, and
   // src/data/coveragePresets.ts. Records retained verbatim; every retention is
@@ -6130,42 +6136,174 @@ export const devices: DeviceType[] = [
       ],
     },
   },
+  // Retained 2026-11-04: cableRuns.test.ts:184 asserts this record's
+  // label (proven by CI run 41867484706). Recorded in PATCHES.md.
+  {
+    id: "site-weatherproof-enclosure",
+    label: "Weatherproof Enclosure",
+    shortCode: "WPE",
+    category: "site",
+    subcategory: "Distribution",
+    keywords: ["weatherproof enclosure", "nema", "outdoor enclosure", "junction box"],
+    defaultCost: 325,
+    laborHours: 1.75,
+    icon: {
+      paths: [
+        { d: "M4 5 h16 v14 h-16 z", fill: "currentFill" },
+        { d: "M4 5 h16 v14 h-16 z", stroke: "currentStroke", strokeWidth: 1.5 },
+        { d: "M7 8 h10 v8 h-10 z", fill: "none", stroke: "currentStroke", strokeWidth: 0.8 },
+        { d: "M9 5 v-2 h6 v2 M8 12 h8", stroke: "currentStroke", strokeWidth: 0.8 },
+      ],
+    },
+  },
 ];
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€ Default port inference â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Default port inference Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Explicit `ports` (from NetBox cross-reference) always wins; entries
 // without a match fall back to sensible defaults by category.
 
+// Port seeding below is the pinned upstream commit's implementation,
+// transplanted verbatim (KNOXNET-FIXES Req 10 AC 7). The supplied catalog's
+// rewrite omitted the AP / access / AV / audio / detection / lighting /
+// production seeding rules, which CI proved incompatible with the tested
+// contract (cableRuns:790, scheduleBlocks:183, reports.engine:307/358).
 function inferDefaultPorts(d: DeviceType): PortSpec[] | undefined {
-  if (d.ports) return d.ports;
+  if (d.ports) return d.ports; // explicit wins
   const code = d.shortCode.toUpperCase();
   switch (d.category) {
     case "cameras":
+      // Every IP camera has one PoE-in copper port; PTZ cameras
+      // typically add an RS-485 line for legacy joystick control.
       if (code === "PTZ") return [ETH0_POE_IN, RS485_BUS];
       return [ETH0_POE_IN];
 
     case "wireless":
-      return [
-        ETH0_POE_IN,
-        { id: "eth1", label: "ETH 1 (LAN)", kind: "ethernet", speed: "1G" },
-      ];
+      // APs: one PoE-in uplink + a passthrough LAN downlink.
+      if (code === "AP")
+        return [
+          ETH0_POE_IN,
+          { id: "eth1", label: "ETH 1 (LAN)", kind: "ethernet", speed: "1G" },
+        ];
+      return [ETH0_LAN];
+
+    case "access": {
+      // Card readers, door controllers, REX, locks.
+      if (code === "RDR" || code === "READER")
+        return [
+          { id: "osdp", label: "OSDP / Wiegand", kind: "serial" },
+          { id: "12vdc", label: "12 VDC", kind: "power" },
+        ];
+      if (code === "ACP" || code === "CTRL" || code === "PANEL")
+        return [
+          ETH0_POE_IN,
+          { id: "osdp", label: "OSDP Bus", kind: "serial" },
+          { id: "relay-1", label: "Relay 1 (Door)", kind: "other" },
+        ];
+      if (code === "LOCK" || code === "MAG")
+        return [
+          { id: "12vdc", label: "12 VDC", kind: "power" },
+          { id: "rex", label: "REX Input", kind: "other" },
+        ];
+      return [{ id: "wires", label: "Wired", kind: "other" }];
+    }
 
     case "network": {
-      const sub = (d.subcategory || "").toUpperCase();
-      if (sub.includes("SWITCH")) {
-        return [
-          ...switchPorts(24, { poe: "out" }),
-          ...sfpPorts(4, "10G"),
-        ];
-      }
-      if (sub.includes("ROUTER") || sub.includes("FIREWALL") || sub.includes("GATEWAY")) {
+      // Switches, routers, NIDs, APs, PoE injectors. Common sizes
+      // seeded with a generic 24-port pattern; specific models can
+      // override via an explicit `ports` field on their catalog row.
+      if (code === "SW" || code === "SWITCH")
+        return [...switchPorts(24, { poe: "out" }), ...sfpPorts(4, "10G")];
+      if (code === "RTR" || code === "ROUTER")
         return [
           { id: "wan", label: "WAN", kind: "ethernet", speed: "1G" },
           ...switchPorts(4, { speed: "1G" }),
         ];
-      }
+      if (code === "NID")
+        return [
+          { id: "fiber", label: "Fiber Demarc", kind: "fiber", pluggable: true },
+          { id: "lan", label: "LAN", kind: "ethernet", speed: "1G" },
+        ];
+      if (code === "POE" || code === "INJ")
+        return [
+          { id: "in", label: "Data In", kind: "ethernet", speed: "1G" },
+          {
+            id: "out",
+            label: "PoE+ Out",
+            kind: "ethernet",
+            speed: "1G",
+            poe: "out",
+          },
+        ];
+      // The catalog files most APs under "network" rather than
+      // "wireless"; cover both so the AP port-pair lands regardless.
+      if (code === "AP" || code === "AP-O" || code.startsWith("AP-"))
+        return [
+          ETH0_POE_IN,
+          { id: "eth1", label: "ETH 1 (LAN)", kind: "ethernet", speed: "1G" },
+        ];
       return [ETH0_LAN];
     }
+
+    case "broadcast":
+    case "av": {
+      // NVR / DVR have many channels + an IP uplink.
+      if (code === "NVR" || code === "DVR")
+        return [
+          {
+            id: "uplink",
+            label: "LAN",
+            kind: "ethernet",
+            speed: "1G",
+          },
+          { id: "hdmi-out", label: "HDMI Out", kind: "video" },
+        ];
+      if (code === "DISP" || code === "TV" || code === "MON")
+        return [
+          { id: "hdmi-in", label: "HDMI In", kind: "video" },
+          POWER_DC,
+        ];
+      return [
+        { id: "video", label: "Video In", kind: "video" },
+        { id: "video-out", label: "Video Out", kind: "video" },
+      ];
+    }
+
+    case "audio":
+      if (code === "MIC")
+        return [
+          { id: "xlr", label: "XLR Out", kind: "audio" },
+        ];
+      if (code === "SPK" || code === "SPKR")
+        return [
+          { id: "in", label: "Speaker In (70V)", kind: "audio" },
+        ];
+      return [
+        { id: "audio-in", label: "Audio In", kind: "audio" },
+        { id: "audio-out", label: "Audio Out", kind: "audio" },
+      ];
+
+    case "detection":
+      return [
+        { id: "signal", label: "Signal Pair", kind: "other" },
+        POWER_DC,
+      ];
+
+    case "lighting":
+      if (code === "DMX")
+        return [
+          { id: "dmx-in", label: "DMX In", kind: "serial" },
+          { id: "dmx-out", label: "DMX Thru", kind: "serial" },
+          POWER_DC,
+        ];
+      return [POWER_DC];
+
+    case "production":
+      return [
+        { id: "io", label: "I/O", kind: "other" },
+      ];
+
+    case "site":
+      return undefined;
 
     default:
       return undefined;
