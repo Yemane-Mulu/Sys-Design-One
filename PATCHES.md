@@ -220,6 +220,10 @@ Conclusion: the 11 retained records remain the complete proven-necessary correct
 - Third-party floor cleared: Cloudflare wrangler 4.157.0 requires Vite ≥ 6.0.0 for deploy auto-configuration; the fork now builds on 7.3.7.
 
 **Definition of Done (source document): satisfied.** Every patch is a Patch_Commit above the pin with a complete register entry; Requirements 2–11 all satisfy their stated automated checks; the existing test suite passes (32/32 files) with no test weakened, skipped, or deleted; type check and production build pass on GitHub-hosted runners; the dependency audit records 0 findings; no verification step started a dev/preview/watch server; no secret appears in any source, fixture, log, register entry, commit, or build artifact; and every push occurred under explicit user approval (Gate D, then the Gate A/B approval of 2026-11-04).
+
+## Main-line advancement (Req 1) — 2026-11-04
+
+By explicit user instruction ("I want what we created as the main"), the fork's `main` branch was fast-forwarded from the pinned upstream base `7bae0cd` to the hardened fork head — a clean fast-forward, no merge commit, no history rewritten. The pristine base remains permanently visible in the history as the common ancestor of every patch. `main` and `Sys-Design-One` now both carry the complete hardened fork: the 10 Patch_Commits, the CI verification workflow, the OpenSpec artifact set, and this register. Default-branch consumers — including the Cloudflare deploy — now build the hardened, zero-vulnerability tree by default. CI verified `main` at the advanced head (run recorded below).
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
