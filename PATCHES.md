@@ -253,6 +253,20 @@ By explicit user instruction ("I want what we created as the main"), the fork's 
 - **Metadata:** package name `design-one`; homepage/repository/issues URLs → the fork.
 - **Deliberately unchanged (format and data compatibility):** the `.knoxnet` file extension and `knoxnet` version-header field (existing project files and IndexedDB saves keep opening), localStorage keys and the Dexie database name (existing user data keeps loading), CSS `kn-*` tokens, the package `author` field (upstream attribution), KNOXNET-FIXES provenance citations, and the README's upstream clone instructions. README rebranded surgically — display name only (4 lines).
 - **Verification (2026-11-04):** `tsc -b` clean across the rebranded tree; CI verifies the complete suite and production build after push.
+
+## Patch 14 — Rack catalog data corrections and enclosure removal (user-directed)
+
+- **Source:** user instruction, 2026-11-04 — "go" (all five items of the fix plan from the >3U audit)
+- **Value corrections (AC 13 format: original → corrected, reason; affected file `src/data/rackDevices.ts`):**
+  1. QNAP TS-h665U-RP: uHeight **665 → 5** (665 was parsed from the model name; the real device is a 5U rackmount NAS)
+  2. CommScope SYSTIMAX 1100GS3 (760151308): uHeight **6 → 1** (the panel's own label reads 1U)
+  3. CommScope PATCHMAX GS3 (760102244): uHeight **6 → 1** (same)
+  4. Eaton ePDU EMA107-10: uHeight **0 → 1** (label reads "Managed 1U"; surfaced in the 0U audit)
+  5. Panduit WMPV45E, APC AR7580A, and the FS 45U single-sided vertical cable manager: uHeight **45/42/45 → 0** (side-rail accessories occupy no rack units; retained in the catalog at 0U alongside the PDUs)
+- **Removal:** 29 rack enclosures, open frames, and wall cabinets — every remaining `passive` record with uHeight > 3 after the corrections (floor racks 41–48U, the 25U half-height, wall cabinets 9–18U). They are racks, not devices placed inside racks (same correction class as Patch 11). Every removed record is enumerated in the commit diff and preserved in git history; a reference check confirmed no test or src usage of any removed id.
+- **Deliberately kept:** passive items ≤ 3U (horizontal cable managers, blanking panels, shelves), the 0U PDUs, and the legitimate 4–8U servers, chassis switches, and NVR.
+- **Verification (2026-11-04):** rack entries 460 → **431** asserted; `sw-cat-24` and the 1U MikroTik AP asserted present; corrections re-scanned (zero passive > 3U; QNAP 5U); encoding-safe UTF-8 IO throughout; `tsc -b` clean; CI verifies the suite and build after push.
+- **Process note:** an intermediate working-tree slip (PowerShell function output-capture prepending seven diagnostic strings to the file head) was caught by `tsc -b` before any commit or push and repaired with structure assertions; nothing corrupt left this machine and the history contains only clean states.
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
