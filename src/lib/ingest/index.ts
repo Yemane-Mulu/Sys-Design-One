@@ -6,12 +6,12 @@
 
 import type { Sheet } from "../../store/projectStore";
 import { detectSourceKind, SOURCE_KIND_LABEL } from "../sheetSource";
-import { ingestPdfFile, ingestPdfBytesAsSheets, ingestPdfFromUrl } from "./pdfIngest";
+import { ingestPdfFile, ingestPdfBytesAsSheets } from "./pdfIngest";
 import { ingestDxfFile } from "./dxfIngest";
 import { ingestSvgFile } from "./svgIngest";
 import { ingestRasterFile } from "./rasterIngest";
 
-export { ingestPdfBytes, ingestPdfBytesAsSheets, ingestPdfFile, ingestPdfFromUrl } from "./pdfIngest";
+export { ingestPdfBytes, ingestPdfBytesAsSheets, ingestPdfFile } from "./pdfIngest";
 export { ingestDxfBytes, ingestDxfFile, parseDxfText } from "./dxfIngest";
 export { ingestSvgText, ingestSvgFile } from "./svgIngest";
 export { ingestRasterBytes, ingestRasterFile } from "./rasterIngest";

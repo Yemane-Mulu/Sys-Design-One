@@ -22,3 +22,21 @@
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm run build` (Production_Build): **deferred to CI** per user direction (no local production builds); the CI verification workflow is added in this change set
   - No dev/preview/watch server started; no secrets written
+
+## Patch 2 — Harden PDF processing and remove URL-based PDF ingestion
+
+- **Source_Fix_Item:** A2 (KNOXNET-FIXES section A) → Requirement 3 (fork spec: `ingest-hardening`)
+- **Authorization:** user instruction, 2026-11-04 — "I want all of the Security fixes (Source_Fix_Items 1–8) done… without building locally"
+- **Purpose:** the PDF engine must never run dynamic code evaluation while parsing documents, and PDF ingestion must accept local file data only.
+- **Reason:** PDF files are hostile input; PDF.js versions before 4.2.67 are exposed to CVE-2024-4367, and the enabled `isEvalSupported` default creates an avoidable execution path. The URL_PDF_APIs were the only PDF URL-fetch paths and had no callers at the pinned commit.
+- **Changed files:**
+  - `src/lib/pdfjs.ts` — `getDocument` options now pass `isEvalSupported: false`; `loadPdfFromUrl()` removed; security contract documented in the module header
+  - `src/lib/ingest/pdfIngest.ts` — `ingestPdfFromUrl()` removed
+  - `src/lib/ingest/index.ts` — `ingestPdfFromUrl` removed from import and re-export
+  - `src/lib/ingest.ts` — `ingestPdfFromUrl` removed from the legacy re-export
+  - `tests/pdfHardening.test.ts` — new: static checks (zero URL-API references across `src/`, the sole `getDocument` call site passes `isEvalSupported: false`, no explicit enable anywhere) + B4-equivalent integration test parsing a generated representative valid local PDF with evaluation disabled
+- **Dependency note:** `pdfjs-dist` 4.10.38 installed from the pinned lockfile — already above the 4.2.67 floor; no dependency change required or made.
+- **Verification (2026-11-04):**
+  - `tsc -b` (Type_Check): **passed** — local run
+  - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
+  - No dev/preview/watch server started; no secrets written

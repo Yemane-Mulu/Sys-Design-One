@@ -11,7 +11,6 @@ export {
   ingestPdfBytes,
   ingestPdfBytesAsSheets,
   ingestPdfFile,
-  ingestPdfFromUrl,
   ingestDxfBytes,
   ingestDxfFile,
   parseDxfText,

@@ -96,11 +96,3 @@ export async function ingestPdfFile(file: File): Promise<Sheet[]> {
   const buf = new Uint8Array(await file.arrayBuffer());
   return ingestPdfBytesAsSheets(buf, file.name);
 }
-
-export async function ingestPdfFromUrl(url: string): Promise<Sheet[]> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
-  const buf = new Uint8Array(await res.arrayBuffer());
-  const filename = decodeURIComponent(url.split("/").pop() ?? "sheet.pdf");
-  return ingestPdfBytesAsSheets(buf, filename);
-}

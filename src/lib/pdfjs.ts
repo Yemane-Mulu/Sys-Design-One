@@ -1,6 +1,11 @@
 // Centralized PDF.js setup + a session-wide document cache so every sheet's
 // PDF is parsed exactly once (vs. once per consumer: thumbnail, background,
 // re-render on zoom). Massive perf win on big architectural sheets.
+//
+// Security: documents are parsed from local data only, with PDF.js dynamic
+// evaluation disabled (isEvalSupported: false) — PDFs are hostile input
+// (KNOXNET-FIXES Source_Fix_Item 2; CVE-2024-4367 class risk). No URL fetch
+// path exists in this module.
 
 import * as pdfjsLib from "pdfjs-dist";
 // @ts-expect-error - Vite ?worker query suffix returns a Worker constructor
@@ -55,7 +60,9 @@ export function getCachedDoc(bytes: Uint8Array): Promise<pdfjsLib.PDFDocumentPro
   // caller's bytes stay usable for IndexedDB persistence and pdf-lib export.
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
-  p = pdfjsLib.getDocument({ data: copy }).promise;
+  // isEvalSupported: false — never let PDF.js run dynamic code evaluation
+  // while parsing hostile documents (CVE-2024-4367 class risk).
+  p = pdfjsLib.getDocument({ data: copy, isEvalSupported: false }).promise;
   docMap.set(bytes, p);
   evictIfNeeded();
   return p;
@@ -78,11 +85,6 @@ export function clearDocCache() {
 
 export async function loadPdfFromBytes(bytes: Uint8Array) {
   return getCachedDoc(bytes);
-}
-
-export async function loadPdfFromUrl(url: string) {
-  const task = pdfjsLib.getDocument({ url });
-  return task.promise;
 }
 
 // Browser canvas area limits vary; Safari is the strictest at ~16M pixels.
