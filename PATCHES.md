@@ -207,6 +207,19 @@ Conclusion: the 11 retained records remain the complete proven-necessary correct
 - **Verification (2026-11-04):**
   - Lockfile audit: **0 vulnerabilities** (recorded above — Req 8 AC 13)
   - CI proves the complete existing suite, `tsc -b`, and production build on the new toolchain after push (Req 8 AC 14)
+
+## CI verification evidence (Req 11) — Gates A/B — 2026-11-04
+
+- **Run 41872166151** (`verify` at `2b9406a`, the Gate A+B head): **success — every step green** on GitHub-hosted runners:
+  - `npm ci` (regenerated lockfile): ✓ — 239 packages installed and audited in 6s
+  - Existing test suite (`vitest run`, non-watch, **Vitest 4.1.12**): ✓ **32/32 test files** — including the Patch 1 formula-neutralization regression tests now exercising **SheetJS 0.20.3**
+  - `tsc -b` (Type_Check): ✓ on the new toolchain
+  - `npm run build` (**Vite 7.3.7**): ✓ built in 9.13s
+- Post-gate lockfile audit: **0 vulnerabilities** — from 29 findings (2 critical) at gate-approval time.
+- Requirement checks closed: Req 7 AC 9 (no known xlsx advisory applicable) ✓ · Req 8 AC 13 (remaining findings recorded: 0) ✓ · Req 8 AC 14 (existing suite + production build pass on the approved toolchain) ✓.
+- Third-party floor cleared: Cloudflare wrangler 4.157.0 requires Vite ≥ 6.0.0 for deploy auto-configuration; the fork now builds on 7.3.7.
+
+**Definition of Done (source document): satisfied.** Every patch is a Patch_Commit above the pin with a complete register entry; Requirements 2–11 all satisfy their stated automated checks; the existing test suite passes (32/32 files) with no test weakened, skipped, or deleted; type check and production build pass on GitHub-hosted runners; the dependency audit records 0 findings; no verification step started a dev/preview/watch server; no secret appears in any source, fixture, log, register entry, commit, or build artifact; and every push occurred under explicit user approval (Gate D, then the Gate A/B approval of 2026-11-04).
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
