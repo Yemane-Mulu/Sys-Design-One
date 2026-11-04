@@ -66,6 +66,23 @@
 - **Changed files:**
   - `src/lib/projectFile.ts` — new `validateProjectFilePayload()` runs before any project loads: required arrays (sheets/racks/connections/diagrams/reports/layers) must be arrays; sheets and markups must be objects; markup `kind` must belong to the pinned commit's 11-kind Markup union; device/cable/schedule markups must carry the discriminator fields the runtime dereferences; serialized sheet-source `kind` must be one of pdf/dxf/svg/raster/ifc; every number in the payload must be finite (JSON `1e999` parses to Infinity); strings enforce documented per-class caps — 500 characters for identifier-class keys, 10,000 for free-form text — while payload strings (base64 sources, SVG source text, embedded logo data URLs) are type-checked only and bounded by the Project_File_Cap. Constants exported: `ALLOWED_MARKUP_KINDS`, `PROJECT_TEXT_LIMITS`
   - `tests/projectFileValidation.test.ts` — new: 11 malformed fixtures rejected with Friendly_Errors (non-array sheets/markups/racks, unsupported markup and source kinds, non-object markup, missing deviceId, non-finite number, non-string version header, over-length strings of both classes); boundary tests at exactly 500/10,000 characters; payload exemptions (50k-character SVG source and embedded logo parse fine); legacy v1.x minimal file still parses; parse → serialize → parse equivalence with byte-identical re-serialization
+
+## Patch 5 — Self-host application fonts
+
+- **Source_Fix_Item:** A5 (KNOXNET-FIXES section A) → Requirement 6 (fork spec: `self-hosted-assets`)
+- **Authorization:** user instruction, 2026-11-04 — "I want all of the Security fixes (Source_Fix_Items 1–8) done… without building locally"
+- **Purpose:** fonts load exclusively from the application origin, so page loads do not disclose usage to third-party font hosts and do not depend on remote font services.
+- **Reason:** `index.html` loaded Inter from `https://rsms.me/inter/inter.css` and JetBrains Mono (weights 400/500/600) from Google Fonts through five external link tags (the source doc counts four; every external font tag was removed). Both fonts are SIL Open Font License.
+- **Changed files:**
+  - `index.html` — all external font link tags removed (rsms.me preconnect + stylesheet; Google Fonts preconnects + stylesheet)
+  - `src/styles.css` — `@font-face` rules added: Inter variable (weights 100–900) and JetBrains Mono at exactly the weights the app uses (400/500/600), all resolving to same-origin `/fonts/` with `font-display: swap`
+  - `public/fonts/` — new self-hosted assets: `InterVariable.woff2` (344 KB, rsms/inter v4.1 release), `JetBrainsMono-Regular.woff2` / `JetBrainsMono-Medium.woff2` / `JetBrainsMono-SemiBold.woff2` (90–92 KB each, JetBrains/JetBrainsMono v2.304 release), `Inter-OFL.txt`, `JetBrainsMono-OFL.txt` (each font's SIL OFL license stored alongside its assets)
+  - `tests/fontSelfHosting.test.ts` — new (A1-equivalent source checks): zero remote-font-host references in index.html and `src/`; `@font-face` definitions for both families; every CSS font URL same-origin under `/fonts/`; woff2 assets and licenses present; woff2 magic-byte verification on every font file
+- **Dependency note:** no package changes — fonts downloaded from the official rsms/inter and JetBrains/JetBrainsMono GitHub releases; woff2 magic bytes and license headers verified at install time.
+- **Verification (2026-11-04):**
+  - `tsc -b` (Type_Check): **passed** — local run
+  - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction) — CI additionally proves the production build's artifacts carry the font and license assets (Vite copies `public/` verbatim)
+  - No dev/preview/watch server started; no secrets written
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
