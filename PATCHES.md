@@ -157,7 +157,18 @@ Conclusion: the 11 retained records remain the complete proven-necessary correct
   - `PATCHES.md` — this entry
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run after corrections
-  - CI re-verification: pushed immediately after this commit; results appended below
+  - CI re-verification: pushed immediately after this commit; results below
+
+## CI verification evidence (Req 11) — 2026-11-04
+
+- **Run 41867484706** (`verify` #1, head `63b138b`, 16:28 UTC): existing suite FAILED with 7 findings → drove the Patch 8 corrections recorded above. Checkout, setup-node, and `npm ci` passed, proving the lockfile installs cleanly on a GitHub-hosted runner.
+- **Run 41869398490** (`verify` #2, head `0041e37`, 16:38–16:39 UTC): **success — every step green** on GitHub-hosted `ubuntu-latest` runners:
+  - `npm ci` (lockfile install): ✓
+  - Existing test suite (`vitest run`, non-watch): ✓ **32/32 test files passed** — the complete upstream suite plus this fork's 7 new hardening/catalog test files, in 2.24s
+  - `tsc -b` (Type_Check): ✓
+  - `npm run build` (Production_Build, vite build): ✓ **built in 7.11s**
+  - No dev/preview/watch server started; no secrets written; evidence captured via the GitHub Actions API
+- This evidence completes the Req 11 verification workflow for Patches 1–8 and supersedes the "via CI (Gate D push pending)" lines above. The earlier local production-build failure (esbuild service error, cause undiagnosed) is confirmed environmental: the identical tree builds cleanly on the CI runner.
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
