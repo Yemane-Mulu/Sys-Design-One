@@ -92,6 +92,39 @@
 - **Changed files:**
   - `src/components/SettingsDrawer.tsx` — `TextField` renders labels via the React text expression `{label}`; the `dangerouslySetInnerHTML` sink is removed; the "BY ____" footer label uses normal quote characters instead of `&quot;` entities; `TextField` exported for tests
   - `tests/settingsLabels.test.ts` — new: static checks (zero `dangerouslySetInnerHTML` in the component, `{label}` text expression present, no `&quot;` entities, normal-quote label) + behavioral proof via `react-dom/server` (existing dependency, no new package): a label containing `<script>` / `<img onerror>` metacharacters renders escaped — displayed as text, never interpreted
+
+## Patch 7 — Replace the device and rack catalogs wholesale with the supplied catalogs
+
+- **Source_Fix_Item:** user catalog instructions → Requirement 10 (fork spec: `device-catalogs`)
+- **Authorization:** user instruction, 2026-11-04 — "I want all of the Security fixes (Source_Fix_Items 1–8) done… and then the catalogs adressed"
+- **Purpose:** the supplied researched device and rack-device TypeScript files are the complete catalog source of truth, replaced wholesale — no spreadsheet conversion, no record-by-record merge.
+- **Reason:** a wholesale replacement preserves the supplied 2026-research-pass declarations (real vendor product lines) and avoids merge ambiguity; compatibility checks and narrowly necessary corrections protect the existing UI, src references, and test suite.
+- **Changed files:**
+  - `src/data/devices.ts` — replaced in full by the supplied catalog (318 KB, real-hardware research pass; same export surface as upstream: `DeviceCategory`, `DeviceType`, `devices`, `devicesById`, `effectiveDevicePorts`; same relative import of `PortSpec` from `../store/projectStore`)
+  - `src/data/rackDevices.ts` — replaced in full by the supplied catalog (453 KB; identical 12-export surface including `rackCategoryLabel`)
+  - `tests/catalogValidation.test.ts` — new Catalog_Validator (Req 10 AC 8–11): unique identifiers within each catalog, lookup maps resolve every record, categories allowed by the unions (compile-enforced) with runtime verification, finite numeric values, every id referenced by existing tests and `src/` resolves through the exported lookup maps, and the exact labels/ports existing tests assert
+- **Compatibility corrections (AC 7/13 — every retention recorded; original value = corrected value, records retained verbatim from the pinned upstream catalog):**
+
+  | Retained id | Catalog | Reason required (reference evidence) | Verification |
+  |---|---|---|---|
+  | `cam-dome` | devices | 20+ test files + `src/data/coveragePresets.ts` | `devicesById["cam-dome"]` resolves; label/category asserted in Catalog_Validator |
+  | `cam-bullet` | devices | reports.engine.test + `coveragePresets.ts` | resolves; category asserted |
+  | `net-ap-i` | devices | cableRuns/connections/networkConfig/reports/scheduleBlocks/undoRedo tests + `coveragePresets.ts` | resolves |
+  | `net-switch-poe` | devices | 40+ references incl. `devicesById["net-switch-poe"].ports` assertion, `effectiveDevicePorts("cam-dome")`, `src/lib/nesting.ts` case | resolves; ports asserted non-empty |
+  | `net-nid` | devices | undoRedo.test | resolves |
+  | `net-headend` | devices | cableRuns/nesting/projectFile/reports/undoRedo tests | resolves |
+  | `net-rack` | devices | `src/lib/nesting.ts` `RACK_DEVICE_ID` constant + nesting.test | resolves |
+  | `site-pullbox` | devices | cableRuns.test label assertion ("Pull Box") + `src/lib/cableRuns.ts` route list | resolves; label asserted |
+  | `site-junction-box` | devices | cableRuns.test label assertion ("Junction Box") + `src/lib/cableRuns.ts` route list | resolves; label asserted |
+  | `net-wifi-bridge` | devices | cableRuns/connections/reports/undoRedo tests + `coveragePresets.ts` | resolves |
+  | `sw-cat-24` | rackDevices | bid.test labor assertions + `src/lib/nesting.ts` return value | resolves; category "switch" asserted |
+
+  No supplied value was altered; no spreadsheet was consulted; `knoxnet_schema_headers.xlsx` was not used. Ids `sw-1`, `switch-1`, `m5`, `ac-controller`, `acs-controller` were verified as markup-level ids or runtime-tolerated unknowns requiring no catalog record.
+- **Verification (2026-11-04):**
+  - `tsc -b` (Type_Check): **passed** — local run, including the typed catalogs and every consumer
+  - `npm test` (incl. `duplicateDevices.test.ts`, bid, cableRuns, connections, nesting, networkConfig, reports.engine, undoRedo): **via CI** (Gate D push pending)
+  - `npm run build`: **via CI**
+  - No existing test weakened, skipped, or deleted; no dev/preview/watch server; no secrets written
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
