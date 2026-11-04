@@ -125,6 +125,16 @@
   - `npm test` (incl. `duplicateDevices.test.ts`, bid, cableRuns, connections, nesting, networkConfig, reports.engine, undoRedo): **via CI** (Gate D push pending)
   - `npm run build`: **via CI**
   - No existing test weakened, skipped, or deleted; no dev/preview/watch server; no secrets written
+
+### Post-replacement reference sweep (2026-11-04, follows Patch 7)
+
+A full sweep compared every `id:` literal in the pinned upstream catalogs (204 ids) against 138 src/test files. Findings, per the Req 10 correction rule (corrections only when proven by compatibility, compilation, or validation failures):
+
+- **~58 `DEVICE_PRESETS` keys in `src/data/coveragePresets.ts`** reference upstream ids absent from the supplied catalog. Inert by design: `getCoveragePreset()` (coveragePresets.ts:174–178) resolves `DEVICE_PRESETS[deviceId] ?? CATEGORY_PRESETS[category] ?? null`, so every supplied-catalog device renders with its category-level preset. No test or runtime path asserts these keys. No correction required.
+- **`rackDeviceIdForNestedDevice()` in `src/lib/nesting.ts` (lines 272–287)** maps four legacy device ids (`net-switch-core`, `net-router`, `net-nvr`, `net-ups`) to rack ids (`sw-core-2u`, `rtr-edge`, `nvr-16`, `ups-1500`) absent from the supplied catalog. Inert by design: the default branch returns `null` and the UI uses the generic nested-bubble rendering — the same path every other unrecognized device takes. The retained pair `net-switch-poe` → `sw-cat-24` keeps the tested path working. No correction required.
+- **`ROUTE_INFRA_DEVICE_IDS` in `src/lib/cableRuns.ts` (lines 14–22)** lists seven site-infrastructure ids; two are retained (`site-pullbox`, `site-junction-box` — asserted by cableRuns.test.ts), five are now inert (`site-handhole`, `site-jbox-out`, `site-weatherproof-enclosure`, `site-fiber-splice`, `site-conduit`). Deferred observation: site-infrastructure devices from the supplied catalog are not treated as route infrastructure by that id list; extending the list is a `src/lib` change outside the two-file replacement scope and no acceptance criterion requires it. Recorded for future work, not corrected.
+
+Conclusion: the 11 retained records remain the complete proven-necessary correction set; no supplied value was altered.
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
