@@ -45,6 +45,21 @@ const FILE_VERSION = "2.0";
 const MIME = "application/json";
 const EXT = ".knoxnet";
 
+// KNOXNET-FIXES Source_Fix_Item 3 (Req 4): .knoxnet project files are
+// capped at 100 MB (100,000,000 bytes), checked before any text is read
+// or parsed, so a hostile oversized project file cannot exhaust browser
+// memory. Serialized projects stay far below this in normal use.
+export const PROJECT_FILE_CAP_BYTES = 100_000_000;
+
+function formatCapBytes(n: number): string {
+  if (n >= 1_000_000) {
+    const mb = n / 1_000_000;
+    return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB`;
+  }
+  if (n >= 1_000) return `${Math.round(n / 1_000)} KB`;
+  return `${n} bytes`;
+}
+
 function safeName(s: string) {
   return s.replace(/[^a-zA-Z0-9_\- ]/g, "_").trim() || "project";
 }
@@ -272,5 +287,13 @@ export async function parseProjectFileText(text: string): Promise<Project> {
 }
 
 export async function importProjectFile(file: File): Promise<Project> {
+  // Reject oversized project files before reading or parsing any text.
+  if (file.size > PROJECT_FILE_CAP_BYTES) {
+    throw new Error(
+      `"${file.name}" is ${formatCapBytes(file.size)} which exceeds the ` +
+        `${formatCapBytes(PROJECT_FILE_CAP_BYTES)} project file limit. ` +
+        "Export a smaller project (fewer or smaller sheets) and try again.",
+    );
+  }
   return parseProjectFileText(await file.text());
 }

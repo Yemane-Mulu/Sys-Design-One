@@ -2,6 +2,10 @@
  * Multi-format ingest dispatcher. Picks the right per-kind ingester
  * based on filename / MIME, falls back to a friendly error when nothing
  * matches so the user knows what's actually supported.
+ *
+ * Security: imported files are size-capped before their contents are
+ * read, so an oversized hostile file cannot freeze the page or exhaust
+ * browser memory (KNOXNET-FIXES Source_Fix_Item 3).
  */
 
 import type { Sheet } from "../../store/projectStore";
@@ -10,6 +14,25 @@ import { ingestPdfFile, ingestPdfBytesAsSheets } from "./pdfIngest";
 import { ingestDxfFile } from "./dxfIngest";
 import { ingestSvgFile } from "./svgIngest";
 import { ingestRasterFile } from "./rasterIngest";
+
+/** Imported_File_Cap, initialized to 50 MB (50,000,000 bytes). */
+export const IMPORTED_FILE_CAP_BYTES = 50_000_000;
+
+let importedFileCap = IMPORTED_FILE_CAP_BYTES;
+
+/** Configure the per-file import size cap, in bytes. */
+export function setImportedFileCap(bytes: number) {
+  importedFileCap = Math.max(1, bytes);
+}
+
+function formatCapBytes(n: number): string {
+  if (n >= 1_000_000) {
+    const mb = n / 1_000_000;
+    return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB`;
+  }
+  if (n >= 1_000) return `${Math.round(n / 1_000)} KB`;
+  return `${n} bytes`;
+}
 
 export { ingestPdfBytes, ingestPdfBytesAsSheets, ingestPdfFile } from "./pdfIngest";
 export { ingestDxfBytes, ingestDxfFile, parseDxfText } from "./dxfIngest";
@@ -27,6 +50,15 @@ export { ingestRasterBytes, ingestRasterFile } from "./rasterIngest";
  * Converter so they can produce a DXF instead.
  */
 export async function ingestFile(file: File): Promise<Sheet[]> {
+  // Reject oversized files before reading their contents (Req 4: the
+  // 150 MB DXF freeze observed in source testing settles instantly).
+  if (file.size > importedFileCap) {
+    throw new Error(
+      `"${file.name}" is ${formatCapBytes(file.size)} which exceeds the ` +
+        `${formatCapBytes(importedFileCap)} import limit. Use a smaller or ` +
+        `compressed file.`,
+    );
+  }
   const kind = detectSourceKind(file.name, file.type);
   if (kind === "pdf") return ingestPdfFile(file);
   if (kind === "dxf") return ingestDxfFile(file);

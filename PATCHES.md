@@ -40,3 +40,19 @@
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
   - No dev/preview/watch server started; no secrets written
+
+## Patch 3 — Enforce imported file and decoded image limits
+
+- **Source_Fix_Item:** A3 (KNOXNET-FIXES section A) → Requirement 4 (fork spec: `ingest-hardening`)
+- **Authorization:** user instruction, 2026-11-04 — "I want all of the Security fixes (Source_Fix_Items 1–8) done… without building locally"
+- **Purpose:** oversized files and decompression-bomb images must be rejected before expensive work, with friendly errors naming the applicable limit.
+- **Reason:** source testing observed a 150 MB DXF freezing the page for 14.7 seconds and a 900-megapixel PNG being accepted; the optional DXF Web Worker remains deferred by scope.
+- **Changed files:**
+  - `src/lib/ingest/index.ts` — `ingestFile()` rejects files above the configurable Imported_File_Cap (initialized to 50 MB / 50,000,000 bytes) before reading contents; `setImportedFileCap` and `IMPORTED_FILE_CAP_BYTES` exported
+  - `src/lib/projectFile.ts` — `importProjectFile()` rejects `.knoxnet` files above the Project_File_Cap (100 MB / 100,000,000 bytes) before reading or parsing any text; `PROJECT_FILE_CAP_BYTES` exported
+  - `src/lib/ingest/rasterIngest.ts` — `ingestRasterBytes()` enforces the Raster_Pixel_Cap (100,000,000 px, `naturalWidth × naturalHeight`) after decode and before project insertion, revoking the object URL on rejection; `RASTER_PIXEL_CAP` and `assertWithinRasterPixelCap` exported
+  - `tests/ingestCaps.test.ts` — new: caps pinned to documented values; 150 MB DXF and >100 MB `.knoxnet` rejected in under 2 seconds with content-accessor fakes proving no read happens before rejection; below-cap file proceeds past the gate; cap configurability; 900-megapixel dimension guard rejects in under 2 seconds; at-cap raster accepted, one-pixel-over rejected
+- **Verification (2026-11-04):**
+  - `tsc -b` (Type_Check): **passed** — local run
+  - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
+  - No dev/preview/watch server started; no secrets written
