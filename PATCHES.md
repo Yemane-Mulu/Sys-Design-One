@@ -224,6 +224,14 @@ Conclusion: the 11 retained records remain the complete proven-necessary correct
 ## Main-line advancement (Req 1) — 2026-11-04
 
 By explicit user instruction ("I want what we created as the main"), the fork's `main` branch was fast-forwarded from the pinned upstream base `7bae0cd` to the hardened fork head — a clean fast-forward, no merge commit, no history rewritten. The pristine base remains permanently visible in the history as the common ancestor of every patch. `main` and `Sys-Design-One` now both carry the complete hardened fork: the 10 Patch_Commits, the CI verification workflow, the OpenSpec artifact set, and this register. Default-branch consumers — including the Cloudflare deploy — now build the hardened, zero-vulnerability tree by default. CI verified `main` at the advanced head (run recorded below).
+
+## Patch 11 — Remove non-rackable cameras and wireless APs from the rack catalog (user-directed)
+
+- **Source:** user instruction, 2026-11-04 ("lets remove the following… They dont go inside the rack at all") — post-completion catalog correction under the Req 10 correction provisions
+- **Reason:** 85 records (51 cameras, 34 wireless access points — every one `uHeight: 0`) are wall/ceiling devices duplicated from the device catalog into the rack catalog; they cannot occupy a rack slot. Every one of the 85 ids remains fully available in `src/data/devices.ts` (verified: all 85 present there); no test or src code references them through the rack catalog.
+- **Kept:** `mikrotik-rbwapr-2nd` (wireless, `uHeight: 1` — rack-mountable, outside the removal list) and the `sw-cat-24` compatibility record.
+- **Correction record (AC 13):** original value = the 85 records (preserved verbatim in git history at the parent commit); corrected value = removed; affected file = `src/data/rackDevices.ts`; the commit diff enumerates every removed record.
+- **Verification (2026-11-04):** rack entries 545 → **460**; all module exports intact and `tsc -b` passed locally; `rackCategoryLabel` coverage and Catalog_Validator assertions unaffected; CI verifies the complete existing suite and production build after push.
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
