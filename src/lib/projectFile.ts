@@ -60,6 +60,218 @@ function formatCapBytes(n: number): string {
   return `${n} bytes`;
 }
 
+// ───────── import validation (KNOXNET-FIXES SFI 4 / Req 5) ─────────
+//
+// The importer previously accepted arbitrary structure. These checks
+// validate the entire parsed payload before any project loads: required
+// arrays are arrays, markup kinds belong to the pinned commit's Markup
+// union, every number is finite (JSON.parse turns 1e999 into Infinity),
+// and strings respect documented per-class length limits. Payload strings
+// (base64 sources, embedded logos, SVG text) are type-checked but never
+// length-capped — they are bounded by the Project_File_Cap instead.
+// All checks are project-local; no new dependency is introduced.
+
+/** Allowed markup kinds, derived from the pinned commit's Markup union. */
+export const ALLOWED_MARKUP_KINDS: readonly string[] = [
+  "device",
+  "cable",
+  "text",
+  "callout",
+  "cloud",
+  "dimension",
+  "rect",
+  "arrow",
+  "polygon",
+  "freehand",
+  "schedule",
+];
+const allowedMarkupKindSet = new Set<string>(ALLOWED_MARKUP_KINDS);
+
+/** Allowed serialized sheet-source kinds (from sheetSource.ts). */
+const allowedSourceKindSet = new Set(["pdf", "dxf", "svg", "raster", "ifc"]);
+
+/** Documented maximum string lengths by field class, in characters. */
+export const PROJECT_TEXT_LIMITS = {
+  /** Identifier-class fields: ids, tags, catalog refs, addresses, kinds. */
+  shortText: 500,
+  /** Free-form text: labels, names, titles, notes, summaries, bodies. */
+  longText: 10_000,
+} as const;
+
+/** Keys whose strings are identifier-class (short-text limit). */
+const SHORT_TEXT_KEYS = new Set([
+  "id",
+  "kind",
+  "layer",
+  "tag",
+  "deviceId",
+  "cableId",
+  "category",
+  "projectNumber",
+  "revision",
+  "ipAddress",
+  "subnetMask",
+  "gateway",
+  "hostname",
+  "macAddress",
+  "connector",
+  "model",
+  "manufacturer",
+  "sheetNumber",
+  "targetId",
+  "targetKind",
+  "medium",
+  "op",
+  "dir",
+  "scope",
+  "format",
+]);
+
+/** Binary-payload keys — type-checked as strings, never length-capped
+ * (bounded by the Project_File_Cap instead). */
+const UNBOUNDED_TEXT_KEYS = new Set(["bytesB64", "pdfBytesB64", "logoDataUrl"]);
+
+function invalid(path: string, why: string): never {
+  throw new Error(
+    `Invalid project file: ${why} (at ${path}). ` +
+      "Re-export the project from KnoxNet and try again.",
+  );
+}
+
+function validateMarkup(markup: unknown, path: string): void {
+  if (markup === null || typeof markup !== "object" || Array.isArray(markup)) {
+    invalid(path, "markup must be an object");
+  }
+  const m = markup as Record<string, unknown>;
+  if (typeof m.kind !== "string" || !allowedMarkupKindSet.has(m.kind)) {
+    invalid(`${path}.kind`, `unsupported markup kind ${JSON.stringify(m.kind)}`);
+  }
+  if (m.id !== undefined && typeof m.id !== "string") {
+    invalid(`${path}.id`, "markup id must be a string");
+  }
+  // Discriminator fields the runtime dereferences directly.
+  if (m.kind === "device" && typeof m.deviceId !== "string") {
+    invalid(`${path}.deviceId`, "device markup requires a deviceId");
+  }
+  if (m.kind === "cable") {
+    if (typeof m.cableId !== "string") {
+      invalid(`${path}.cableId`, "cable markup requires a cableId");
+    }
+    if (m.points !== undefined && !Array.isArray(m.points)) {
+      invalid(`${path}.points`, "cable points must be an array");
+    }
+  }
+  if (m.kind === "schedule" && typeof m.targetId !== "string") {
+    invalid(`${path}.targetId`, "schedule markup requires a targetId");
+  }
+}
+
+function validateSourceSerialized(source: unknown, path: string): void {
+  if (source === null || typeof source !== "object" || Array.isArray(source)) {
+    invalid(path, "sourceSerialized must be an object");
+  }
+  const s = source as Record<string, unknown>;
+  if (typeof s.kind !== "string" || !allowedSourceKindSet.has(s.kind)) {
+    invalid(`${path}.kind`, `unsupported sheet source kind ${JSON.stringify(s.kind)}`);
+  }
+  // Payload strings (bytesB64, SVG text) are file-cap bounded; only the
+  // numeric/other fields recurse through the generic scan.
+  for (const [key, child] of Object.entries(s)) {
+    if (typeof child === "string") continue;
+    scanValue(child, `${path}.${key}`);
+  }
+}
+
+/** Generic deep scan: every number finite, every string within its class cap. */
+function scanValue(value: unknown, path: string): void {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      invalid(path, "numbers must be finite");
+    }
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach((child, i) => scanValue(child, `${path}[${i}]`));
+    return;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const childPath = `${path}.${key}`;
+    if (key === "sourceSerialized") {
+      validateSourceSerialized(child, childPath);
+      continue;
+    }
+    if (typeof child === "string") {
+      if (UNBOUNDED_TEXT_KEYS.has(key)) continue;
+      const cap = SHORT_TEXT_KEYS.has(key)
+        ? PROJECT_TEXT_LIMITS.shortText
+        : PROJECT_TEXT_LIMITS.longText;
+      if (child.length > cap) {
+        invalid(
+          childPath,
+          `string exceeds the ${cap.toLocaleString("en-US")}-character limit ` +
+            `(${child.length.toLocaleString("en-US")} characters)`,
+        );
+      }
+      continue;
+    }
+    scanValue(child, childPath);
+  }
+}
+
+/**
+ * Validate the parsed .knoxnet payload before any project loads. Throws
+ * a Friendly_Error naming the condition and location; the caller's
+ * currently loaded project is never touched because a throw never
+ * returns a partially-parsed Project.
+ */
+export function validateProjectFilePayload(payload: unknown): void {
+  const p = payload as Partial<ProjectFilePayload> & Record<string, unknown>;
+  if (typeof p.knoxnet !== "string") {
+    invalid("knoxnet", "version header must be a string");
+  }
+  const project = p.project;
+  if (project === null || typeof project !== "object" || Array.isArray(project)) {
+    invalid("project", "project must be an object");
+  }
+  const proj = project as Record<string, unknown>;
+  for (const arrayKey of [
+    "sheets",
+    "racks",
+    "connections",
+    "diagrams",
+    "reports",
+    "layers",
+  ]) {
+    if (proj[arrayKey] !== undefined && !Array.isArray(proj[arrayKey])) {
+      invalid(`project.${arrayKey}`, `${arrayKey} must be an array`);
+    }
+  }
+  if (proj.meta !== undefined) {
+    if (proj.meta === null || typeof proj.meta !== "object" || Array.isArray(proj.meta)) {
+      invalid("project.meta", "meta must be an object");
+    }
+  }
+  if (Array.isArray(proj.sheets)) {
+    (proj.sheets as unknown[]).forEach((sheet, i) => {
+      const sheetPath = `project.sheets[${i}]`;
+      if (sheet === null || typeof sheet !== "object" || Array.isArray(sheet)) {
+        invalid(sheetPath, "sheet must be an object");
+      }
+      const sh = sheet as Record<string, unknown>;
+      if (sh.markups !== undefined && !Array.isArray(sh.markups)) {
+        invalid(`${sheetPath}.markups`, "markups must be an array");
+      }
+      if (Array.isArray(sh.markups)) {
+        (sh.markups as unknown[]).forEach((markup, m) => {
+          validateMarkup(markup, `${sheetPath}.markups[${m}]`);
+        });
+      }
+    });
+  }
+  scanValue(p, "file");
+}
+
 function safeName(s: string) {
   return s.replace(/[^a-zA-Z0-9_\- ]/g, "_").trim() || "project";
 }
@@ -252,6 +464,11 @@ export async function parseProjectFileText(text: string): Promise<Project> {
         "Use Export → Project File (.knoxnet) to create a shareable file.",
     );
   }
+
+  // Structural validation before anything loads (SFI 4 / Req 5): a
+  // malformed file throws a Friendly_Error instead of producing a
+  // partially loaded or structurally invalid project.
+  validateProjectFilePayload(p);
 
   const rawSheets = (p.project.sheets ?? []) as SerializedSheet[];
   const sheets: Sheet[] = await Promise.all(

@@ -56,3 +56,17 @@
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
   - No dev/preview/watch server started; no secrets written
+
+## Patch 4 — Validate imported .knoxnet project structure
+
+- **Source_Fix_Item:** A4 (KNOXNET-FIXES section A) → Requirement 5 (fork spec: `ingest-hardening`)
+- **Authorization:** user instruction, 2026-11-04 — "I want all of the Security fixes (Source_Fix_Items 1–8) done… without building locally"
+- **Purpose:** the entire required project structure must be validated before anything loads, so malformed external data cannot produce a partially loaded or structurally invalid project.
+- **Reason:** `parseProjectFileText()` previously accepted arbitrary structure after the version-header check; guaranteed shape becomes essential when project files enter later business workflows. Validation is project-local hand-written code using existing dependencies — no schema package introduced (Gate C respected).
+- **Changed files:**
+  - `src/lib/projectFile.ts` — new `validateProjectFilePayload()` runs before any project loads: required arrays (sheets/racks/connections/diagrams/reports/layers) must be arrays; sheets and markups must be objects; markup `kind` must belong to the pinned commit's 11-kind Markup union; device/cable/schedule markups must carry the discriminator fields the runtime dereferences; serialized sheet-source `kind` must be one of pdf/dxf/svg/raster/ifc; every number in the payload must be finite (JSON `1e999` parses to Infinity); strings enforce documented per-class caps — 500 characters for identifier-class keys, 10,000 for free-form text — while payload strings (base64 sources, SVG source text, embedded logo data URLs) are type-checked only and bounded by the Project_File_Cap. Constants exported: `ALLOWED_MARKUP_KINDS`, `PROJECT_TEXT_LIMITS`
+  - `tests/projectFileValidation.test.ts` — new: 11 malformed fixtures rejected with Friendly_Errors (non-array sheets/markups/racks, unsupported markup and source kinds, non-object markup, missing deviceId, non-finite number, non-string version header, over-length strings of both classes); boundary tests at exactly 500/10,000 characters; payload exemptions (50k-character SVG source and embedded logo parse fine); legacy v1.x minimal file still parses; parse → serialize → parse equivalence with byte-identical re-serialization
+- **Verification (2026-11-04):**
+  - `tsc -b` (Type_Check): **passed** — local run
+  - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
+  - No dev/preview/watch server started; no secrets written
