@@ -3,6 +3,12 @@
  * worksheet named after the report. When grouped, output is one
  * worksheet per group key (sheet names limited to 31 chars per the
  * XLSX spec); the first sheet "Summary" carries a group-size rollup.
+ *
+ * Security: every value — including any that begins with a formula
+ * trigger (=, +, -, @, tab, CR) — is written through aoa_to_sheet as a
+ * text cell. SheetJS never infers a formula from a string value, so
+ * exported text stays inert. tests/formulaNeutralization.test.ts pins
+ * this behavior (KNOXNET-FIXES Source_Fix_Item 1).
  */
 
 import * as XLSX from "xlsx";
