@@ -169,6 +169,25 @@ Conclusion: the 11 retained records remain the complete proven-necessary correct
   - `npm run build` (Production_Build, vite build): ✓ **built in 7.11s**
   - No dev/preview/watch server started; no secrets written; evidence captured via the GitHub Actions API
 - This evidence completes the Req 11 verification workflow for Patches 1–8 and supersedes the "via CI (Gate D push pending)" lines above. The earlier local production-build failure (esbuild service error, cause undiagnosed) is confirmed environmental: the identical tree builds cleanly on the CI runner.
+
+## Patch 9 — Replace the abandoned spreadsheet package with SheetJS 0.20.3 (Gate A approved)
+
+- **Source_Fix_Item:** A6 (KNOXNET-FIXES section A) → Requirement 7 (fork spec: `dependency-governance`)
+- **Authorization:** user instruction, 2026-11-04 — "approved to fix Gate A and B as per the spec" (Gate A package presented 2026-11-04 with audit evidence; dry-run validated)
+- **Decision record (Gate A evidence requirements):**
+  - **Package source:** official SheetJS CDN tarball `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` — docs.sheetjs.com: "The SheetJS CDN is the authoritative source for SheetJS modules"
+  - **Exact version:** 0.20.3 — current CE release; meets the doc floor (≥ 0.20.3)
+  - **Maintenance:** actively maintained (SheetJS LLC; source and releases at git.sheetjs.com)
+  - **License:** Apache-2.0 (unchanged)
+  - **Audit before:** `xlsx@0.18.5` flagged HIGH — prototype pollution (GHSA-4r6h-8v6p-xvw6) + ReDoS (GHSA-5pgg-2g8v-p4x9), "No fix available" on the abandoned npm registry line
+  - **Audit after (2026-11-04, lockfile):** **xlsx advisories clear** — no known xlsx advisory applicable to the installed dependency graph; 15 findings remain overall (1 low, 5 moderate, 7 high, 2 critical) — the 2 criticals are tinypool, addressed by Patch 10 (Gate B)
+  - **Integrity approach:** tarball pinned in `package-lock.json` with sha512 integrity metadata
+  - **Compatibility risk:** LOW — Knoxnet writes spreadsheets only (`aoa_to_sheet` / `book_new` / `write`); the known issues primarily affect reading paths; the Patch 1 formula-neutralization tests (including the XLSX text-cell regression) are the behavior net, and CI re-verifies the full suite and build
+- **Changed files:**
+  - `package.json` — xlsx dependency source switched to the CDN tarball URL
+  - `package-lock.json` — xlsx 0.20.3 pinned with integrity; regenerated via `npm install --package-lock-only` (no local install, no local build)
+- **Verification (2026-11-04):**
+  - Lockfile audit: xlsx clear (recorded above); CI verifies the complete existing suite, type check, and production build on the runner after push
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
