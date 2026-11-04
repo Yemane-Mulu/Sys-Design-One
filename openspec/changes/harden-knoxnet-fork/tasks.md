@@ -17,9 +17,9 @@
 
 ## 3. Verification (Requirement 11)
 
-- [ ] 3.1 Gate D push approval; CI runs the complete existing test suite, `tsc -b`, and production build on GitHub-hosted runners
-- [ ] 3.2 Record CI results per patch in PATCHES.md; run post-gate `npm audit` and record remaining findings
-- [ ] 3.3 Confirm no existing test weakened, skipped, or deleted anywhere in the change set
+- [x] 3.1 Gate D push approved and executed; CI runs the complete existing test suite, `tsc -b`, and production build on GitHub-hosted runners — runs 41869398490 and verify #3 green at `0041e37`/`741848a` (32/32 test files, `tsc -b`, vite build in 7.11s)
+- [x] 3.2 CI results recorded in PATCHES.md (Req 11 evidence section, including the failed baseline run 41867484706 that drove the Patch 8 corrections); post-gate `npm audit` lands with Gates A/B (tasks 1.6/1.7)
+- [x] 3.3 No existing test weakened, skipped, or deleted — verified across the change set, and CI re-proved the complete upstream suite plus all seven new test files
 
 ## Workflow follow-up
 
