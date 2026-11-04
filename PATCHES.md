@@ -82,6 +82,20 @@
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction) — CI additionally proves the production build's artifacts carry the font and license assets (Vite copies `public/` verbatim)
+
+## Patch 6 — Render settings labels as text
+
+- **Source_Fix_Item:** A8 (KNOXNET-FIXES section A) → Requirement 9 (fork spec: `settings-ui`)
+- **Authorization:** user instruction, 2026-11-04 — "I want all of the Security fixes (Source_Fix_Items 1–8) done… without building locally"
+- **Purpose:** settings labels render through React's text pipeline, so no future label change can turn the settings drawer into an HTML injection path.
+- **Reason:** the TextField label rendered through `dangerouslySetInnerHTML` — not exploitable while every label was hardcoded, but an avoidable sink. The sink existed to render `&quot;` entities in the company-name label; both are replaced.
+- **Changed files:**
+  - `src/components/SettingsDrawer.tsx` — `TextField` renders labels via the React text expression `{label}`; the `dangerouslySetInnerHTML` sink is removed; the "BY ____" footer label uses normal quote characters instead of `&quot;` entities; `TextField` exported for tests
+  - `tests/settingsLabels.test.ts` — new: static checks (zero `dangerouslySetInnerHTML` in the component, `{label}` text expression present, no `&quot;` entities, normal-quote label) + behavioral proof via `react-dom/server` (existing dependency, no new package): a label containing `<script>` / `<img onerror>` metacharacters renders escaped — displayed as text, never interpreted
+- **Verification (2026-11-04):**
+  - `tsc -b` (Type_Check): **passed** — local run
+  - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)
+  - No dev/preview/watch server started; no secrets written
   - No dev/preview/watch server started; no secrets written
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run

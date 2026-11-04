@@ -245,7 +245,7 @@ function BrandingEditor() {
           onChange={(v) => setBranding({ tagline: v })}
         />
         <TextField
-          label="Full company name (used in &quot;BY ____&quot; footer)"
+          label={'Full company name (used in "BY ____" footer)'}
           placeholder={DEFAULT_BRANDING.fullName}
           value={project.branding?.fullName ?? ""}
           onChange={(v) => setBranding({ fullName: v })}
@@ -454,7 +454,7 @@ function CoverPageSettingsEditor() {
   );
 }
 
-function TextField({
+export function TextField({
   label,
   value,
   onChange,
@@ -469,10 +469,9 @@ function TextField({
 }) {
   return (
     <div className="mb-2">
-      <div
-        className="text-xs text-ink-300 mb-1"
-        dangerouslySetInnerHTML={{ __html: label }}
-      />
+      {/* Labels render as React text nodes — never as HTML (KNOXNET-FIXES
+          Source_Fix_Item 8): markup in a label is displayed, not interpreted. */}
+      <div className="text-xs text-ink-300 mb-1">{label}</div>
       <input
         className="input w-full"
         value={value}
