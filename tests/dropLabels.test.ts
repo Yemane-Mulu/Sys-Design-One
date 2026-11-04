@@ -68,14 +68,16 @@ describe("drop label scheme", () => {
 
   it("falls back to defaults for blank and missing fields", () => {
     expect(resolveDropLabelScheme(undefined)).toEqual(DEFAULT_DROP_LABEL_SCHEME);
-    expect(resolveDropLabelScheme({ prefix: " ", minDigits: 0 })).toEqual(
+    expect(resolveDropLabelScheme({ prefix: " " })).toEqual(
       DEFAULT_DROP_LABEL_SCHEME,
     );
   });
 
-  it("resolves custom schemes and clamps digits into 1–8", () => {
+  it("resolves custom schemes and clamps digits into 1–8 like the cable scheme", () => {
     const resolved = resolveDropLabelScheme({ prefix: "dr", minDigits: 99, separator: "." });
     expect(resolved).toEqual({ prefix: "DR", minDigits: 8, separator: "." });
+    // 0 clamps up to 1 (the cable scheme's exact behavior), not to the default.
+    expect(resolveDropLabelScheme({ minDigits: 0 }).minDigits).toBe(1);
   });
 
   it("formats numbers in the resolved scheme", () => {

@@ -301,3 +301,10 @@ By explicit user instruction ("I want what we created as the main"), the fork's 
   - `tsc -b` (Type_Check): **passed** — local run, repeatedly during the build and clean at the end
   - `npm test` / `npm run build`: **via CI** (no local runs per user direction)
   - No dev/preview/watch server started; no secrets written; local test files are not type-checked by `tsc -b` (tsconfig includes `src` only) — CI's vitest run exercises them
+
+### Patch 15 CI correction (2026-11-04)
+
+- **Trigger:** user-approved push of `ec9d2a2` (both branches). CI run **41906228010** (`verify`, `Sys-Design-One` branch) failed the existing-suite step with exactly **one** test failure: `tests/dropLabels.test.ts:71` — `resolveDropLabelScheme({ prefix: " ", minDigits: 0 })` was asserted to equal the bundled defaults (`minDigits: 3`).
+- **Root cause:** the test expected `minDigits: 0` to fall back to the default. The implementation clamps `0 → 1`, which is the exact documented behavior of the cable-scheme precedent (`resolveCableLabelScheme` in `src/lib/cableLabels.ts` uses the identical clamp). The implementation is correct; the test expectation was wrong — a test-only defect that local verification could not catch (tests are not type-checked or run locally per the fork's constraints).
+- **Correction:** `tests/dropLabels.test.ts` — the blank/missing-fields test now asserts the blank-prefix fallback only, and the clamp test explicitly pins `minDigits: 0 → 1` and `99 → 8` (the cable scheme's semantics). No production code changed; no test weakened, skipped, or deleted.
+- **Verification:** the corrected commit is pushed to both branches; the CI evidence below records the green runs.
