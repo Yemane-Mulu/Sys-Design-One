@@ -1,26 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="kn-shield" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+    <linearGradient id="d1-tile" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#141C2B"/>
       <stop offset="1" stop-color="#0B1220"/>
     </linearGradient>
-    <linearGradient id="kn-stroke" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse">
+    <linearGradient id="d1-edge" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#F7C765"/>
       <stop offset="1" stop-color="#C99227"/>
     </linearGradient>
   </defs>
-  <!-- Hex shield -->
-  <path d="M32 2 L58 16 L58 48 L32 62 L6 48 L6 16 Z"
-        fill="url(#kn-shield)" stroke="url(#kn-stroke)" stroke-width="2"/>
-  <!-- Inner notch ring -->
-  <path d="M32 8 L52 19 L52 45 L32 56 L12 45 L12 19 Z"
-        fill="none" stroke="#1B2433" stroke-width="1"/>
-  <!-- Stylized K -->
-  <g stroke="#F4B740" stroke-width="3.4" stroke-linecap="square" fill="none">
-    <line x1="22" y1="16" x2="22" y2="48"/>
-    <line x1="22" y1="32" x2="42" y2="16"/>
-    <line x1="22" y1="32" x2="42" y2="48"/>
-  </g>
-  <!-- Signal dot -->
-  <circle cx="46" cy="32" r="2.4" fill="#F4B740"/>
+  <!-- DesignOne tile: rounded square on the app's midnight card surface,
+       amber edge echoing the brand accent. -->
+  <rect x="2" y="2" width="60" height="60" rx="14"
+        fill="url(#d1-tile)" stroke="url(#d1-edge)" stroke-width="2"/>
+  <!-- D — the bowl of the letterform, in the light ink of the DESIGN half -->
+  <path d="M19 17 v30 M19 17 h5 a15 15 0 0 1 0 30 h-5"
+        stroke="#F5F7FA" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- 1 — the single stroke of the name, in the amber of the ONE half -->
+  <path d="M38 23 l6 -6 M44 17 v30"
+        stroke="#F4B740" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 </svg>

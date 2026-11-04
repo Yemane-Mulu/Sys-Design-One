@@ -1,4 +1,4 @@
-# Knoxnet System Designer
+# DesignOne System Designer
 
 Free, browser-based multi-format drawing markup, device layout, custom
 reporting, and bid generator for AV, security, low-voltage, and network
@@ -18,13 +18,13 @@ machine.
 The demo shows the core workflow: install from GitHub, import a PDF plan,
 place devices, review coverage, and export branded project documentation.
 
-![Knoxnet System Designer demo](docs/demo.gif)
+![DesignOne System Designer demo](docs/demo.gif)
 
 [Watch the 8-minute startup and quick demo video on YouTube.](https://www.youtube.com/watch?v=HnLf3ZR60c4)
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=HnLf3ZR60c4">
-    <img src="docs/demo/thumbnail-quick-demo.png" alt="Watch the Knoxnet System Designer startup and quick demo video" width="100%">
+    <img src="docs/demo/thumbnail-quick-demo.png" alt="Watch the DesignOne System Designer startup and quick demo video" width="100%">
   </a>
 </p>
 
@@ -39,7 +39,7 @@ place devices, review coverage, and export branded project documentation.
 
 ## What It Does
 
-Knoxnet System Designer turns any architectural drawing into a working
+DesignOne System Designer turns any architectural drawing into a working
 system-design, commissioning, reporting, and estimating canvas. You can
 mark up drawings, place devices with full network and physical-port
 records, run measured cable paths, generate any custom report from the

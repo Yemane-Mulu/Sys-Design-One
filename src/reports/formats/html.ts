@@ -3,7 +3,7 @@
  * with inline CSS so the user can open it in any browser, print to
  * PDF, or share without worrying about external stylesheets. The
  * layout matches the brand chrome roughly so the output reads as
- * "a KnoxNet report" rather than a raw table.
+ * "a DesignOne report" rather than a raw table.
  */
 
 import type { ReportResult } from "../engine";
@@ -100,7 +100,7 @@ export function reportToHtml(result: ReportResult): string {
     ${groupSections.join("\n")}
     <footer>
       <span>${escapeHtml(footer)}</span>
-      <span>KnoxNet System Designer · Custom Report</span>
+      <span>DesignOne System Designer · Custom Report</span>
     </footer>
   </div>
 </body>

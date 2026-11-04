@@ -226,7 +226,7 @@ export function StartScreen() {
             raster. Calibrate scale, drop cameras, APs, controllers, run fiber
             and copper, generate any custom report you need — and export a
             {" "}
-            {stickyBranding.fullName === "Knoxnet System Designer"
+            {stickyBranding.fullName === "DesignOne System Designer"
               ? "branded"
               : `${stickyBranding.fullName}-branded`}{" "}
             deliverable that actually looks like one.
@@ -275,7 +275,7 @@ export function StartScreen() {
               a collaborator — all sheets and live markups are restored.
             </div>
             <div className="mt-2 text-[11px] text-ink-400 font-mono leading-snug">
-              iPhone tip: this picker allows any file, then KnoxNet validates the project.
+              iPhone tip: this picker allows any file, then DesignOne validates the project.
             </div>
             <input
               type="file"
@@ -384,7 +384,7 @@ export function StartScreen() {
         )}
 
         <footer className="mt-24 pt-6 border-t border-white/5 flex items-center justify-between text-xs text-ink-400 font-mono">
-          <span>Knoxnet System Designer · Apache-2.0</span>
+          <span>DesignOne System Designer · Apache-2.0</span>
           <span>Press ⌘K for commands · ? for shortcuts</span>
         </footer>
       </div>

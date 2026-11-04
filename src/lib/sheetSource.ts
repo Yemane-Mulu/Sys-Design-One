@@ -1,6 +1,6 @@
 /**
  * Sheet source — a discriminated union describing where a sheet's
- * background drawing comes from. KnoxNet started as a PDF-only tool;
+ * background drawing comes from. DesignOne started as a PDF-only tool;
  * v2.0 introduces multi-format support (DXF, SVG, raster) without
  * changing the rest of the data model. Everything downstream of a Sheet
  * (markups, calibration, masks, exports, reports) is source-agnostic —

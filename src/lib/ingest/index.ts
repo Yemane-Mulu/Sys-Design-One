@@ -82,6 +82,6 @@ export async function ingestFile(file: File): Promise<Sheet[]> {
     );
   }
   throw new Error(
-    `Unsupported file type. KnoxNet imports: ${Object.values(SOURCE_KIND_LABEL).join(", ")}.`,
+    `Unsupported file type. DesignOne imports: ${Object.values(SOURCE_KIND_LABEL).join(", ")}.`,
   );
 }

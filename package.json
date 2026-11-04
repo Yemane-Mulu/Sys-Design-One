@@ -1,18 +1,18 @@
 {
-  "name": "knoxnet-system-designer",
+  "name": "design-one",
   "private": false,
   "version": "0.1.0",
   "type": "module",
   "description": "Free, browser-based PDF markup, device layout, and bid generator for AV/security/network system designers",
   "license": "Apache-2.0",
   "author": "Phillip Alexander Young",
-  "homepage": "https://github.com/PhillipAlexanderYoung/knoxnet-system-designer",
+  "homepage": "https://github.com/Yemane-Mulu/Sys-Design-One",
   "repository": {
     "type": "git",
-    "url": "https://github.com/PhillipAlexanderYoung/knoxnet-system-designer.git"
+    "url": "https://github.com/Yemane-Mulu/Sys-Design-One.git"
   },
   "bugs": {
-    "url": "https://github.com/PhillipAlexanderYoung/knoxnet-system-designer/issues"
+    "url": "https://github.com/Yemane-Mulu/Sys-Design-One/issues"
   },
   "keywords": [
     "pdf",

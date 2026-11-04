@@ -40,10 +40,51 @@ function useShellBranding(override?: BrandingConfig): BrandingConfig {
 
 /**
  * Brand monogram. Renders the user's uploaded logo when present, and
- * otherwise renders nothing — by design. The tool ships with no default
- * mark so any team can use it without picking up an unrelated brand's
- * shield. To get a mark, upload one in `Settings → Branding → Logo`.
+ * otherwise falls back to the bundled DesignOne D1 tile — a rounded
+ * midnight square with a white D and amber 1, matching the favicon and
+ * the print monogram. Upload a logo in `Settings → Branding → Logo` to
+ * replace it everywhere.
  */
+function DefaultD1Mark({ size }: { size: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      fill="none"
+      aria-hidden="true"
+      style={{ flex: "0 0 auto" }}
+    >
+      <rect
+        x="2"
+        y="2"
+        width="60"
+        height="60"
+        rx="14"
+        fill="#0B1220"
+        stroke="#C99227"
+        strokeWidth="2"
+      />
+      <path
+        d="M19 17 v30 M19 17 h5 a15 15 0 0 1 0 30 h-5"
+        stroke="#F5F7FA"
+        strokeWidth="4.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+      <path
+        d="M38 23 l6 -6 M44 17 v30"
+        stroke="#F4B740"
+        strokeWidth="4.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
 export function Monogram({
   size = 28,
   branding: brandingOverride,
@@ -52,20 +93,22 @@ export function Monogram({
   branding?: BrandingConfig;
 }) {
   const branding = useShellBranding(brandingOverride);
-  if (!branding.logoDataUrl) return null;
-  return (
-    <img
-      src={branding.logoDataUrl}
-      alt="Brand mark"
-      width={size}
-      height={size}
-      style={{ width: size, height: size, objectFit: "contain" }}
-    />
-  );
+  if (branding.logoDataUrl) {
+    return (
+      <img
+        src={branding.logoDataUrl}
+        alt="Brand mark"
+        width={size}
+        height={size}
+        style={{ width: size, height: size, objectFit: "contain" }}
+      />
+    );
+  }
+  return <DefaultD1Mark size={size} />;
 }
 
 /**
- * Brand wordmark — the dual-tone lockup ("KNOX·NET" by default) plus an
+ * Brand wordmark — the dual-tone lockup ("DESIGN·ONE" by default) plus an
  * optional small-caps tagline. Both halves of the wordmark are
  * customizable via the Branding panel; either can be empty.
  *

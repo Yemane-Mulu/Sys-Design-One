@@ -240,6 +240,19 @@ By explicit user instruction ("I want what we created as the main"), the fork's 
 - **Fix:** both catalog files rebuilt from pristine sources with explicit UTF-8 IO — the supplied originals (verified clean at source) plus the ASCII-only upstream records and helper transplant re-applied verbatim. Every prior patch's content asserted present: the 11 retained device records plus `site-weatherproof-enclosure` (192 device entries), the upstream `inferDefaultPorts` + `POWER_DC` seeding, the `sw-cat-24` compatibility record, and the 85-entry removal (460 rack entries). Byte-level assertions confirmed real UTF-8 (zero mojibake sequences) before writing.
 - **Affected files:** `src/data/devices.ts`, `src/data/rackDevices.ts` — content restored; structure identical to Patches 7/8/11's verified intent
 - **Verification (2026-11-04):** entry counts 192/460, retained records, transplant markers, and the kept 1U wireless entry all asserted; `tsc -b` clean; CI verifies the suite and build after push.
+
+## Patch 13 — Rebrand to DesignOne with the D1 logo (user-directed)
+
+- **Source:** user instruction, 2026-11-04 — "lets also change the brand to DesignOne… please also make a simple logo for it"
+- **Brand identity:** default branding rebranded — wordmark lockup "DESIGN·ONE" (bold + light dual-tone, as before), fullName "DesignOne System Designer", document-code prefix `D1` (codes like `D1-12345-R0`); brand tokens (`src/brand/tokens.ts`) → name DesignOne. User-facing strings rebranded: document title, start-screen hero/footer and the default-brand check, HTML report chrome, ingest/validation messages, and code comments that referenced the product by name.
+- **The D1 logo (new, simple):** a rounded midnight tile with an amber edge carrying a squared white **D** and an amber **1** — the D in the light ink of the DESIGN half, the 1 in the amber of the ONE half, echoing the dual-tone wordmark. Implemented in three places:
+  - `public/brand/monogram.svg` — favicon, replacing the K-shield hex
+  - `public/brand/wordmark.svg` — DESIGN/ONE lockup with the SYSTEM/DESIGNER mono tagline
+  - `src/brand/Wordmark.tsx` — new bundled `DefaultD1Mark`: the in-app Monogram now renders the D1 tile by default instead of nothing; an uploaded logo still overrides everywhere
+- **PDF exports:** `drawMonogram` (exported renderer API) rewritten from the K-shield to the D1 tile using the same path-op convention (square body — flip-invariant — plus squared D and 1 strokes); `drawHeaderMark` now falls back to the bundled D1 monogram when no logo is uploaded (the header box was already reserved in the layout).
+- **Metadata:** package name `design-one`; homepage/repository/issues URLs → the fork.
+- **Deliberately unchanged (format and data compatibility):** the `.knoxnet` file extension and `knoxnet` version-header field (existing project files and IndexedDB saves keep opening), localStorage keys and the Dexie database name (existing user data keeps loading), CSS `kn-*` tokens, the package `author` field (upstream attribution), KNOXNET-FIXES provenance citations, and the README's upstream clone instructions. README rebranded surgically — display name only (4 lines).
+- **Verification (2026-11-04):** `tsc -b` clean across the rebranded tree; CI verifies the complete suite and production build after push.
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)

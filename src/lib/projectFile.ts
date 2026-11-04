@@ -134,7 +134,7 @@ const UNBOUNDED_TEXT_KEYS = new Set(["bytesB64", "pdfBytesB64", "logoDataUrl"]);
 function invalid(path: string, why: string): never {
   throw new Error(
     `Invalid project file: ${why} (at ${path}). ` +
-      "Re-export the project from KnoxNet and try again.",
+      "Re-export the project from DesignOne and try again.",
   );
 }
 
@@ -460,7 +460,7 @@ export async function parseProjectFileText(text: string): Promise<Project> {
   const p = payload as Partial<ProjectFilePayload>;
   if (!p.knoxnet || !p.project) {
     throw new Error(
-      "Not a KnoxNet project file (missing version header). " +
+      "Not a DesignOne project file (missing version header). " +
         "Use Export → Project File (.knoxnet) to create a shareable file.",
     );
   }

@@ -5,10 +5,10 @@
 
 export interface BrandingConfig {
   /** Bold wordmark text. Drawn on the dark side of the dual-color
-   *  lockup ("KNOX" in the bundled default brand). */
+   *  lockup ("DESIGN" in the bundled default brand). */
   wordmarkPrimary: string;
   /** Secondary wordmark text — drawn in the lighter weight, immediately
-   *  to the right of the primary ("NET" by default). */
+   *  to the right of the primary ("ONE" by default). */
   wordmarkSecondary: string;
   /** Small-caps tagline that sits beneath / next to the wordmark
    *  (default "SYSTEM DESIGNER"). Empty string suppresses it. */
@@ -20,31 +20,31 @@ export interface BrandingConfig {
   accentColor: string;
   /** Slightly darker accent used on the bottom edge of cards for depth. */
   accentDeepColor: string;
-  /** Prefix for the auto-generated document code (default "KN" produces
-   *  codes like `KN-12345-R0`). */
+  /** Prefix for the auto-generated document code (default "D1" produces
+   *  codes like `D1-12345-R0`). */
   docCodePrefix: string;
   /** Optional secondary tagline on the cover page (e.g. service
    *  categories). Empty string suppresses. */
   coverCategories: string;
   /** Optional uploaded logo as a data URL (PNG or JPG). When set, it
-   *  replaces the built-in K-shield monogram everywhere. */
+   *  replaces the built-in D1 monogram everywhere. */
   logoDataUrl?: string;
 }
 
-/** Default brand — the bundled "Knoxnet System Designer" identity used
+/** Default brand — the bundled "DesignOne System Designer" identity used
  *  as the starting point for a fresh project. Editing any field in
  *  Settings copies these defaults onto `Project.branding` and overlays
  *  the user's change. Pick your own wordmark, tagline, color, and logo
  *  in Settings → Branding to replace the bundled defaults across the
  *  editor preview and every export. */
 export const DEFAULT_BRANDING: BrandingConfig = {
-  wordmarkPrimary: "KNOX",
-  wordmarkSecondary: "NET",
+  wordmarkPrimary: "DESIGN",
+  wordmarkSecondary: "ONE",
   tagline: "SYSTEM DESIGNER",
-  fullName: "Knoxnet System Designer",
+  fullName: "DesignOne System Designer",
   accentColor: "#F4B740",
   accentDeepColor: "#C99227",
-  docCodePrefix: "KN",
+  docCodePrefix: "D1",
   coverCategories: "AUDIO/VIDEO  ·  SECURITY  ·  NETWORK",
 };
 

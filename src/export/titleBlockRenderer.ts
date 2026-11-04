@@ -185,7 +185,7 @@ interface TitleBlockOpts {
    *  upstream so any unset fields use the bundled defaults. */
   branding?: BrandingConfig;
   /** Logo image embedded into the same PDFDocument the page belongs to.
-   *  When provided, replaces the built-in K-shield monogram. */
+   *  When provided, replaces the built-in D1 monogram. */
   logoImage?: PDFImage;
 }
 
@@ -514,10 +514,11 @@ function drawTextClipped(
   });
 }
 
-/** Mini hex-shield monogram drawn with pdf-lib path ops. The body uses
- *  the palette's `bg` (so it sits cleanly inside whatever background
- *  the chrome is using) and the K stroke uses `accent` (so swapping
- *  the user's brand color cascades down to the mark). */
+/** Mini D1 monogram drawn with pdf-lib path ops — the DesignOne tile:
+ *  a square body in the palette's `bg` (so it sits cleanly inside
+ *  whatever background the chrome is using) with a squared D and the
+ *  single stroke of the 1 in `accent` (so swapping the user's brand
+ *  color cascades down to the mark). */
 export function drawMonogram(
   page: PDFPage,
   x: number,
@@ -527,22 +528,33 @@ export function drawMonogram(
   body: ReturnType<typeof hex> = KN_MIDNIGHT,
 ) {
   const s = size;
-  const half = s / 2;
+  // Tile body — a square with an accent edge (flip-invariant, so the
+  // path-space convention cannot mirror it).
+  page.drawSvgPath(`M 0 0 L ${s} 0 L ${s} ${s} L 0 ${s} Z`, {
+    x,
+    y: y + s,
+    color: body,
+    borderColor: accent,
+    borderWidth: 0.6,
+  });
+  // D — squared bowl: stem, top, right side, bottom.
+  const dx = x + s * 0.26;
+  const dt = y + s * 0.75;
+  const db = y + s * 0.25;
+  const dw = s * 0.18;
   page.drawSvgPath(
-    `M ${half} 0 L ${s} ${s * 0.22} L ${s} ${s * 0.78} L ${half} ${s} L 0 ${s * 0.78} L 0 ${s * 0.22} Z`,
+    `M ${dx} ${db} L ${dx} ${dt} L ${dx + dw} ${dt} L ${dx + dw} ${db} L ${dx} ${db}`,
     {
-      x,
-      y: y + s,
-      color: body,
+      x: 0,
+      y: 0,
       borderColor: accent,
-      borderWidth: 0.6,
+      borderWidth: 1.2,
     },
   );
-  const k = s * 0.35;
-  const kx = x + s * 0.32;
-  const ky = y + s * 0.25;
+  // 1 — flag plus stem, right of the D.
+  const ox = x + s * 0.6;
   page.drawSvgPath(
-    `M ${kx} ${ky} L ${kx} ${ky + k} M ${kx} ${ky + k / 2} L ${kx + k * 0.7} ${ky} M ${kx} ${ky + k / 2} L ${kx + k * 0.7} ${ky + k}`,
+    `M ${ox - s * 0.1} ${dt - s * 0.1} L ${ox} ${dt} L ${ox} ${db}`,
     {
       x: 0,
       y: 0,
@@ -552,9 +564,9 @@ export function drawMonogram(
   );
 }
 
-/** Header mark — only renders when the user has uploaded a logo. The
- *  tool intentionally ships with no default mark so any brand can use
- *  the export without inheriting an unrelated company's identity. */
+/** Header mark — renders the user's uploaded logo when present, and
+ *  otherwise falls back to the bundled DesignOne D1 monogram (the
+ *  same mark the editor shell and favicon use). */
 function drawHeaderMark(
   page: PDFPage,
   x: number,
@@ -563,7 +575,10 @@ function drawHeaderMark(
   _palette: ThemeColors,
   logoImage: PDFImage | undefined,
 ) {
-  if (!logoImage) return;
+  if (!logoImage) {
+    drawMonogram(page, x, y, size);
+    return;
+  }
   // Fit the image in a square box of `size`, preserving aspect ratio.
   // Center horizontally + vertically inside that box so wordmarks
   // longer than they are tall don't get squeezed.

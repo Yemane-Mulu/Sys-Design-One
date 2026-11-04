@@ -15,7 +15,7 @@ import type {
  * raster blurring, which is the whole point of supporting DXF.
  *
  * Coordinate transform: DXF uses a math-style Y-up convention (Y grows
- * upward), while every other source kind in KnoxNet uses Y-down (top-
+ * upward), while every other source kind in DesignOne uses Y-down (top-
  * left origin). We flip Y inside a parent Group and translate by the
  * drawing's min-bound so (0,0) on the editor canvas aligns with the
  * top-left of the drawing's bounding box.

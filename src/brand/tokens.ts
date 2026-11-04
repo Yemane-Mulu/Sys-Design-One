@@ -5,9 +5,9 @@
 // `resolveBranding(...)` in `lib/branding.ts`. Edit those if you want
 // to ship the tool pre-configured for a different default brand.
 export const brand = {
-  name: "Knoxnet",
+  name: "DesignOne",
   tagline: "System Designer",
-  fullName: "Knoxnet System Designer",
+  fullName: "DesignOne System Designer",
 } as const;
 
 export const colors = {
