@@ -1,4 +1,4 @@
-// KnoxNet rack device library Ã¢â‚¬â€ real hardware catalog (2026 research pass).
+// KnoxNet rack device library — real hardware catalog (2026 research pass).
 // Generated from verified current vendor product lines. RU heights,
 // power draw and weights cross-referenced from the NetBox
 // devicetype-library where the model exists there; faceplates are
@@ -98,7 +98,7 @@ export interface RackDeviceType {
   manufacturer: string; // for display
   model: string; // model number
   category: RackCategory;
-  /** Height in U; 1U Ã¢â€°Ë† 44.45 mm; 0 = not rack-mountable */
+  /** Height in U; 1U ≈ 44.45 mm; 0 = not rack-mountable */
   uHeight: number;
   powerWatts: number;
   weightLbs: number;
@@ -112,9 +112,9 @@ export interface RackDeviceType {
   notes?: string;
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ─────────────────────────────────────────────────────────────────
 // Library
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ─────────────────────────────────────────────────────────────────
 
 export const rackDevices: RackDeviceType[] = [
   {
@@ -1226,7 +1226,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1255,7 +1255,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1284,7 +1284,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1313,7 +1313,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1342,7 +1342,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1371,7 +1371,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1400,7 +1400,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1624,7 +1624,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1653,7 +1653,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1682,7 +1682,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1711,7 +1711,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1740,7 +1740,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1845,7 +1845,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1874,7 +1874,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1903,7 +1903,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1932,7 +1932,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1961,7 +1961,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -1990,7 +1990,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2019,7 +2019,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2047,7 +2047,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2076,7 +2076,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2105,7 +2105,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2134,7 +2134,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2163,7 +2163,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2192,7 +2192,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2221,7 +2221,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2326,7 +2326,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2355,7 +2355,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2384,7 +2384,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2413,7 +2413,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2442,7 +2442,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -2471,7 +2471,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 32, w: 24, h: 80, label: "Ã¢â‚¬â€ BATT Ã¢â‚¬â€", style: "battery" },
+        { x: 32, w: 24, h: 80, label: "— BATT —", style: "battery" },
         { x: 62, w: 32, h: 80, label: "ON LINE", style: "vent" },
       ],
     },
@@ -6050,7 +6050,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "125W/ch streaming amplifier for passive speakers, HDMI ARC, rack-mountable",
@@ -6077,7 +6077,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "8-channel / 4-zone GaN multi-room streaming amplifier, professional installer channel",
@@ -6368,7 +6368,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "60W/ch streaming amplifier, HDMI ARC, just add passive speakers",
@@ -6395,7 +6395,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "Streaming amplifier with upgraded DAC, Dolby Digital, Wi-Fi 6E",
@@ -6422,7 +6422,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "100W/ch (8 ohm) streaming amplifier with 3.5-inch touchscreen, RoomFit room correction, HDMI ARC",
@@ -6449,7 +6449,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "100W/ch hi-fi power amplifier companion for WiiM streamers",
@@ -6596,7 +6596,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "100W/ch streaming amplifier, HDMI eARC, BluOS multi-room, Dirac Live ready",
@@ -6623,7 +6623,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "Compact 40W/ch streaming amplifier, HDMI eARC, BluOS multi-room",
@@ -6771,7 +6771,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "Constant-voltage (70/100V) networked streaming stereo amplifier for commercial installs",
@@ -6798,7 +6798,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "2 x 60W (8 ohm) low-impedance networked streaming stereo amplifier",
@@ -6900,7 +6900,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "4-channel Q-SYS network amplifier, 1500W max per channel, Lo-Z/70V/100V FlexAmp",
@@ -6927,7 +6927,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "8-channel Q-SYS network amplifier, 1500W max per channel, Lo-Z/70V/100V FlexAmp",
@@ -7270,7 +7270,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "4 x 150W (600W total) Lo-Z/70V/100V amplifier with onboard DSP, half-rack",
@@ -7297,7 +7297,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "Networked multi-channel paging/voice evacuation amplifier, up to 600W",
@@ -7717,7 +7717,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "4 x 1200W network power amplifier with matrix, DSP, and Dante I/O",
@@ -7744,7 +7744,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
       bays: [
-        { x: 36, w: 58, h: 70, label: "CH 1 Ã‚Â· 2 Ã‚Â· 3 Ã‚Â· 4 Ã¢â‚¬â€ MONITOR", style: "vent" },
+        { x: 36, w: 58, h: 70, label: "CH 1 · 2 · 3 · 4 — MONITOR", style: "vent" },
       ],
     },
     notes: "2 x 120W Lo-Z/Hi-Z mixer-amplifier with DSP for small commercial installs",
@@ -11681,7 +11681,7 @@ export const rackDevices: RackDeviceType[] = [
         { x: 23, kind: "status", y: 60, on: true },
       ],
     },
-    notes: "Compact SIP video intercom, 5MP 140Ã‚Â° FoV, IK10, remote door control",
+    notes: "Compact SIP video intercom, 5MP 140° FoV, IK10, remote door control",
   },
   {
     id: "axis-i8116-e",
@@ -13399,7 +13399,7 @@ export const rackDevices: RackDeviceType[] = [
     notes: "Weatherproof dual-band AP with miniPCI-e slot and integrated 2.4GHz radio, outdoor wall/pole mount, verified live on mikrotik.com, 1U",
   },
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€ Compatibility record retained from the pinned upstream catalog â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ───────── Compatibility record retained from the pinned upstream catalog ─────────
   // KNOXNET-FIXES Req 10 AC 7/13: referenced by tests/bid.test.ts and
   // src/lib/nesting.ts. Retained verbatim; recorded in PATCHES.md.
   {

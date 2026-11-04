@@ -232,6 +232,14 @@ By explicit user instruction ("I want what we created as the main"), the fork's 
 - **Kept:** `mikrotik-rbwapr-2nd` (wireless, `uHeight: 1` — rack-mountable, outside the removal list) and the `sw-cat-24` compatibility record.
 - **Correction record (AC 13):** original value = the 85 records (preserved verbatim in git history at the parent commit); corrected value = removed; affected file = `src/data/rackDevices.ts`; the commit diff enumerates every removed record.
 - **Verification (2026-11-04):** rack entries 545 → **460**; all module exports intact and `tsc -b` passed locally; `rackCategoryLabel` coverage and Catalog_Validator assertions unaffected; CI verifies the complete existing suite and production build after push.
+
+## Patch 12 — Repair UTF-8 encoding corruption in the catalog files
+
+- **Source:** self-identified defect, 2026-11-04 — found while rebranding, when the README replacement pass exhibited the same corruption pattern
+- **What happened:** the PowerShell 5.1 file IO used in Patches 7, 8, and 11 (`Get-Content` + `WriteAllLines`) decoded the BOM-less UTF-8 catalog sources as ANSI and re-encoded them, double-encoding every non-ASCII character (em-dashes, box-drawing section dividers, and any special characters in the supplied data) into mojibake. `tsc`, the full test suite, and CI all passed on the corrupted files because mojibake remains syntactically valid TypeScript — every automated check was blind to it, and it surfaced only as display-level text damage.
+- **Fix:** both catalog files rebuilt from pristine sources with explicit UTF-8 IO — the supplied originals (verified clean at source) plus the ASCII-only upstream records and helper transplant re-applied verbatim. Every prior patch's content asserted present: the 11 retained device records plus `site-weatherproof-enclosure` (192 device entries), the upstream `inferDefaultPorts` + `POWER_DC` seeding, the `sw-cat-24` compatibility record, and the 85-entry removal (460 rack entries). Byte-level assertions confirmed real UTF-8 (zero mojibake sequences) before writing.
+- **Affected files:** `src/data/devices.ts`, `src/data/rackDevices.ts` — content restored; structure identical to Patches 7/8/11's verified intent
+- **Verification (2026-11-04):** entry counts 192/460, retained records, transplant markers, and the kept 1U wireless entry all asserted; `tsc -b` clean; CI verifies the suite and build after push.
 - **Verification (2026-11-04):**
   - `tsc -b` (Type_Check): **passed** — local run
   - `npm test` / `npm run build`: **via CI** (Gate D push pending; no local builds per user direction)

@@ -1,4 +1,4 @@
-// KnoxNet device library Ã¢â‚¬â€ real hardware catalog (2026 research pass).
+// KnoxNet device library — real hardware catalog (2026 research pass).
 // Generated from verified current vendor product lines. Generic
 // placeholder SVG icons per subcategory; port specs cross-referenced
 // from the NetBox devicetype-library where the model exists there.
@@ -35,7 +35,7 @@ export interface DeviceType {
   ports?: PortSpec[];
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Shared port templates Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ───────── Shared port templates ─────────
 const ETH0_POE_IN: PortSpec = {
   id: "eth0",
   label: "ETH 0 (PoE in)",
@@ -5970,11 +5970,12 @@ export const devices: DeviceType[] = [
     ],
   },
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€ Compatibility records retained from the pinned upstream catalog â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ───────── Compatibility records retained from the pinned upstream catalog ─────────
   // KNOXNET-FIXES Req 10 AC 7/13: these ids are referenced by the existing test
   // suite and by src/lib/nesting.ts (RACK_DEVICE_ID), src/lib/cableRuns.ts, and
   // src/data/coveragePresets.ts. Records retained verbatim; every retention is
-  // recorded in PATCHES.md.
+  // recorded in PATCHES.md. (site-weatherproof-enclosure retained after CI run
+  // 41867484706 proved cableRuns.test.ts:184.)
   {
     id: "cam-dome",
     label: "Dome Camera",
@@ -6136,8 +6137,6 @@ export const devices: DeviceType[] = [
       ],
     },
   },
-  // Retained 2026-11-04: cableRuns.test.ts:184 asserts this record's
-  // label (proven by CI run 41867484706). Recorded in PATCHES.md.
   {
     id: "site-weatherproof-enclosure",
     label: "Weatherproof Enclosure",
@@ -6158,7 +6157,7 @@ export const devices: DeviceType[] = [
   },
 ];
 
-// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Default port inference Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ───────── Default port inference ─────────
 // Explicit `ports` (from NetBox cross-reference) always wins; entries
 // without a match fall back to sensible defaults by category.
 
