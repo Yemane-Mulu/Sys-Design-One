@@ -166,6 +166,14 @@ export async function exportMarkupPdf(project: Project) {
     const sheet = project.sheets[i];
     try {
       const sourceKind = sheet.source?.kind ?? (sheet.pdfBytes ? "pdf" : null);
+      // Temporary diagnostic: log the sheet's source state so we can see
+      // exactly which underlay branch the export takes in the wild.
+      console.log(
+        `[export/diag] sheet "${sheet.name}": sourceKind=${sourceKind}, ` +
+          `source?.kind=${sheet.source?.kind ?? "none"}, ` +
+          `pdfBytes=${sheet.pdfBytes ? `${sheet.pdfBytes.byteLength}B` : "none"}, ` +
+          `page=${sheet.pageWidth}x${sheet.pageHeight}`,
+      );
       if (sourceKind === "pdf") {
         const bytes = sheet.source?.kind === "pdf" ? sheet.source.bytes : sheet.pdfBytes;
         if (!bytes) {
