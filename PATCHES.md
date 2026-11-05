@@ -406,3 +406,11 @@ By explicit user instruction ("I want what we created as the main"), the fork's 
   - Functional smoke (tsc-emitted CJS copies, deleted after): bottom-anchor geometry (y=16, top at 154), inside-strip placement, **stack-under-legend no-overlap** (2-row and 9-unit legends vs the 138pt block on a 518pt page), tiny-page cap (50pt floor) — **all assertions passed**. The smoke's first run caught a wrong test expectation (top-anchored reading of pdf y-up) — test-only, corrected; no production code changed
   - `npm test` / `npm run build`: **via CI** (user-approved push below) — local runs impossible (child-process spawn EPERM); the pre-existing Patch 16 `pdfjs.ts:14` import crash (`CI-ERROR-NOTE.md`) still red-lines the suite step and is out of scope here
   - No dev/preview/watch server started; no secrets written; no existing test weakened, skipped, or deleted
+
+### Patch 20 CI evidence (2026-11-05)
+
+- **Verify runs on `5ed6191`** (both branches): existing suite **FAILED** with exactly **one** finding — the **pre-existing** `src/lib/pdfjs.ts:14` module-load crash (`TypeError: default is not a constructor` via `exportMarkupPdf.ts` → `tests/exportMarkupPdf.rotation.test.ts`), annotations identical to the `921b33a`/`3233a04` baseline. **No Patch 20 failure annotations** — `tests/legendData.test.ts` (side title-block geometry, stack no-overlap) and `tests/projectFileValidation.test.ts` (placement union) passed behind that import crash; `tsc -b`/`vite build` steps never run (the suite step aborts the job), same as every run since Patch 16.
+- **Cloudflare `Workers Builds: sys-design-one` check on `5ed6191`: SUCCESS** — the deploy pipeline builds the Patch 20 tree cleanly.
+- Both branches verified at `5ed6191dc9f2d01d53fde6894c7a7eac7e31e4de` via `git ls-remote` after push; working tree clean.
+- The suite cannot go green until the Patch 16-era `pdfjs.ts` constructor is made lazy — recorded in `../CI-ERROR-NOTE.md`, awaiting user direction, deliberately out of Patch 20's approved scope.
+- No dev/preview/watch server started; no secrets written; evidence captured via the GitHub Actions API (`gh api` check-runs/annotations).
