@@ -28,6 +28,12 @@ import {
   defaultLegendBounds,
 } from "../lib/sheetAnalysis";
 import {
+  buildLegendData,
+  sideLegendBounds,
+  LEGEND_STRIP_WIDTH,
+  type LegendData,
+} from "../lib/legendData";
+import {
   cloudPath,
   formatFeet,
   polylineLengthPts,
@@ -166,6 +172,16 @@ export async function exportMarkupPdf(project: Project) {
     const sheet = project.sheets[i];
     try {
       const sourceKind = sheet.source?.kind ?? (sheet.pdfBytes ? "pdf" : null);
+      // Patch 19 — side placement widens this sheet's exported page with a
+      // legend strip beside the plan. Everything drawn (markups, masks,
+      // title block) stays anchored in sheet coords, so the floor plan
+      // itself is never touched or covered. A sheet with no legend content
+      // keeps its original page size.
+      const legendData = buildLegendData(sheet.markups);
+      const side =
+        sheet.legendPlacement === "side" && legendData.totalItems > 0;
+      const pageW = sheet.pageWidth + (side ? LEGEND_STRIP_WIDTH : 0);
+      const pageH = sheet.pageHeight;
       // Temporary diagnostic: log the sheet's source state so we can see
       // exactly which underlay branch the export takes in the wild.
       console.log(
@@ -196,7 +212,21 @@ export async function exportMarkupPdf(project: Project) {
           const src = await PDFDocument.load(bytes);
           const srcPage = src.getPages()[0];
           const rotation = normalizeRotation(srcPage.getRotation().angle);
-          if (rotation === 0) {
+          if (side) {
+            // Side mode cannot widen a copied page (copyPages keeps the
+            // source MediaBox). Embed the source page — rotation baked in
+            // exactly like the rotated branch — onto a fresh, widened page
+            // so the legend strip has somewhere to live.
+            const rawW = srcPage.getWidth();
+            const rawH = srcPage.getHeight();
+            const embedded = await out.embedPage(
+              srcPage,
+              undefined,
+              rotationCompensationMatrix(rotation, rawW, rawH),
+            );
+            const sidePage = out.addPage([pageW, pageH]);
+            sidePage.drawPage(embedded, { x: 0, y: 0 });
+          } else if (rotation === 0) {
             const [copied] = await out.copyPages(src, [0]);
             out.addPage(copied);
           } else {
@@ -232,7 +262,7 @@ export async function exportMarkupPdf(project: Project) {
             `[export] vector page copy failed on sheet "${sheet.name}", falling back to raster:`,
             vectorErr,
           );
-          await embedSourcePageAsRaster(out, sheet, bytes);
+          await embedSourcePageAsRaster(out, sheet, bytes, pageW);
           pushToast(
             "info",
             `Export: "${sheet.name}" was embedded as a raster image (vector copy not possible for this PDF).`,
@@ -245,14 +275,14 @@ export async function exportMarkupPdf(project: Project) {
       // blank page sized to the sheet — markups + title block draw over
       // white.
       if (sourceKind !== "pdf") {
-        const embedded = await embedNonPdfUnderlay(out, sheet);
+        const embedded = await embedNonPdfUnderlay(out, sheet, pageW);
         if (embedded) {
           pushToast(
             "info",
             `Export: "${sheet.name}" background embedded as an image.`,
           );
         } else {
-          out.addPage([sheet.pageWidth, sheet.pageHeight]);
+          out.addPage([pageW, pageH]);
           if (sheet.source) {
             pushToast(
               "error",
@@ -309,16 +339,22 @@ export async function exportMarkupPdf(project: Project) {
       } catch (e) {
         reportSheetProblem(sheet.name, "title block failed", e);
       }
-      // 4. Device legend — at the user's chosen rect, or default top-right.
+      // 4. Device legend — at the user's chosen rect, or default top-right;
+      //    in side mode it draws on the widened strip beside the plan
+      //    (bounds computed in native page coords — no app→page flip).
       const lgApp = sheet.legendBounds ?? defaultLegendBounds(sheet);
+      const lgBounds = side
+        ? sideLegendBounds(pageW, pageH, legendData)
+        : appBoundsToPage(lgApp, sheet);
       try {
         drawLegend({
           page,
           fonts,
           sheet,
           theme,
-          bounds: appBoundsToPage(lgApp, sheet),
+          bounds: lgBounds,
           branding,
+          data: legendData,
         });
       } catch (e) {
         reportSheetProblem(sheet.name, "legend failed", e);
@@ -805,6 +841,8 @@ async function embedSourcePageAsRaster(
   out: PDFDocument,
   sheet: Sheet,
   bytes: Uint8Array,
+  /** Widened page width for side-mode legends (defaults to the sheet). */
+  pageWidth = sheet.pageWidth,
 ): Promise<void> {
   const doc = await getCachedDoc(bytes);
   const srcPage = await doc.getPage(1);
@@ -817,7 +855,7 @@ async function embedSourcePageAsRaster(
     c.charCodeAt(0),
   );
   const img = await out.embedJpg(jpgBytes);
-  const page = out.addPage([sheet.pageWidth, sheet.pageHeight]);
+  const page = out.addPage([pageWidth, sheet.pageHeight]);
   page.drawImage(img, {
     x: 0,
     y: 0,
@@ -843,6 +881,8 @@ async function embedSourcePageAsRaster(
 async function embedNonPdfUnderlay(
   out: PDFDocument,
   sheet: Sheet,
+  /** Widened page width for side-mode legends (defaults to the sheet). */
+  pageWidth = sheet.pageWidth,
 ): Promise<boolean> {
   const source = sheet.source;
   try {
@@ -855,7 +895,7 @@ async function embedNonPdfUnderlay(
         sheet.pageHeight,
       );
       if (!jpg) return false;
-      const page = out.addPage([sheet.pageWidth, sheet.pageHeight]);
+      const page = out.addPage([pageWidth, sheet.pageHeight]);
       page.drawImage(jpg, {
         x: 0,
         y: 0,
@@ -877,7 +917,7 @@ async function embedNonPdfUnderlay(
         sheet.pageHeight,
       );
       if (!jpg) return false;
-      const page = out.addPage([sheet.pageWidth, sheet.pageHeight]);
+      const page = out.addPage([pageWidth, sheet.pageHeight]);
       page.drawImage(jpg, {
         x: 0,
         y: 0,

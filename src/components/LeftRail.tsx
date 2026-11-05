@@ -24,6 +24,7 @@ import {
   ClipboardList,
   ChevronUp,
   ChevronDown,
+  PanelRight,
 } from "lucide-react";
 import { categoryColor } from "../brand/tokens";
 import { ReportsTab } from "./reports/ReportsTab";
@@ -449,6 +450,7 @@ function BrandingPanel() {
   const setSelectedBrand = useProjectStore((s) => s.setSelectedBrand);
   const openPagePreview = useProjectStore((s) => s.openPagePreview);
   const pushToast = useProjectStore((s) => s.pushToast);
+  const updateSheet = useProjectStore((s) => s.updateSheet);
 
   if (!project) return null;
   const sheet = project.sheets.find((s) => s.id === activeSheetId);
@@ -466,6 +468,17 @@ function BrandingPanel() {
     if (!sheet) return;
     setLegendBounds(sheet.id, undefined);
     pushToast("info", "Legend reset to default position");
+  };
+
+  const onPlacement = (placement: "overlay" | "side") => {
+    if (!sheet) return;
+    updateSheet(sheet.id, { legendPlacement: placement });
+    pushToast(
+      "info",
+      placement === "side"
+        ? "Legend exports on a side panel beside the plan"
+        : "Legend exports on top of the plan",
+    );
   };
 
   const onResetAll = () => {
@@ -542,6 +555,40 @@ function BrandingPanel() {
         <Wand2 className="w-3.5 h-3.5" />
         Select legend
       </button>
+      {/* Patch 19 — where the legend exports: on the plan (overlay) or on a
+          strip beside it (side). Per-sheet, default overlay. */}
+      <div className="flex items-center gap-1.5">
+        <PanelRight className="w-3.5 h-3.5 text-amber-knox" />
+        <div className="label">Legend placement</div>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <button
+          onClick={() => onPlacement("overlay")}
+          disabled={!sheet}
+          className={`btn-ghost w-full justify-start text-xs disabled:opacity-50 ${
+            sheet?.legendPlacement !== "side" ? "text-amber-knox" : ""
+          }`}
+          title="Legend box on top of the plan (drag to position it)"
+        >
+          <Layers className="w-3.5 h-3.5" />
+          On plan
+        </button>
+        <button
+          onClick={() => onPlacement("side")}
+          disabled={!sheet}
+          className={`btn-ghost w-full justify-start text-xs disabled:opacity-50 ${
+            sheet?.legendPlacement === "side" ? "text-amber-knox" : ""
+          }`}
+          title="Legend on a side panel beside the plan — never covers the drawing"
+        >
+          <PanelRight className="w-3.5 h-3.5" />
+          Side panel
+        </button>
+      </div>
+      <p className="text-[10px] text-ink-400 leading-relaxed">
+        Side panel adds a strip beside the sheet on the exported PDF —
+        useful when the floor plan has no empty space for the legend box.
+      </p>
       <button
         onClick={onResetTitleBlock}
         disabled={!sheet || !tbPlaced}

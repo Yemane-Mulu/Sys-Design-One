@@ -201,6 +201,36 @@ describe("malformed files are rejected without partial load", () => {
     ).rejects.toThrow(/unsupported sheet source kind "evil"/);
   });
 
+  // Patch 19 — per-sheet legend placement union. Absent = overlay (old
+  // files stay valid); a present-but-unknown value must be rejected.
+  it("rejects unsupported legend placements", async () => {
+    await expect(
+      parseProjectFileText(
+        editedPayload((p) => {
+          p.project.sheets[0].legendPlacement = "diagonal";
+        }),
+      ),
+    ).rejects.toThrow(/unsupported legend placement "diagonal"/);
+  });
+
+  it("accepts overlay and side legend placements (and absent = overlay)", async () => {
+    stubObjectUrls();
+    const overlay = await parseProjectFileText(
+      editedPayload((p) => {
+        p.project.sheets[0].legendPlacement = "overlay";
+      }),
+    );
+    expect(overlay.sheets[0]?.legendPlacement).toBe("overlay");
+    const side = await parseProjectFileText(
+      editedPayload((p) => {
+        p.project.sheets[0].legendPlacement = "side";
+      }),
+    );
+    expect(side.sheets[0]?.legendPlacement).toBe("side");
+    const absent = await parseProjectFileText(basePayloadJson());
+    expect(absent.sheets[0]?.legendPlacement).toBeUndefined();
+  });
+
   it("rejects a non-string version header", async () => {
     await expect(
       parseProjectFileText(

@@ -323,6 +323,12 @@ export interface Sheet {
   /** Same as titleBlockBounds, but for the device legend. Default is
    *  top-right of the page. */
   legendBounds?: BrandBounds;
+  /** Patch 19 — where the legend exports on this sheet. `overlay`
+   *  (default, and the behavior whenever the field is absent) draws the
+   *  box on top of the plan at `legendBounds`; `side` widens the exported
+   *  PDF page with a legend strip beside the plan so the drawing is never
+   *  covered. */
+  legendPlacement?: "overlay" | "side";
 }
 
 // ───────── Markup types ─────────

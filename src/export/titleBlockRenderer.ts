@@ -15,6 +15,7 @@ import {
   LEGEND_LINE_HEIGHT,
   LEGEND_PADDING,
   DROP_PLATE_COLORS,
+  type LegendData,
 } from "../lib/legendData";
 import {
   categoryColor as catColor,
@@ -37,6 +38,17 @@ export function hex(h: string) {
   const b = parseInt(v.slice(4, 6), 16) / 255;
   if (!isFinite(r) || !isFinite(g) || !isFinite(b)) return rgb(0.58, 0.62, 0.72);
   return rgb(r, g, b);
+}
+
+/** Linear blend of two pdf-lib colors (t=0 → a, t=1 → b) — mirrors mix()
+ * in exportMarkupPdf.ts so the legend icon fill matches the placed
+ * device's fill exactly. */
+function mixRgb(a: ReturnType<typeof hex>, b: ReturnType<typeof hex>, t: number) {
+  return rgb(
+    a.red * (1 - t) + b.red * t,
+    a.green * (1 - t) + b.green * t,
+    a.blue * (1 - t) + b.blue * t,
+  );
 }
 
 /**
@@ -379,9 +391,11 @@ export function drawTitleBlock(opts: TitleBlockOpts) {
 /**
  * Draws the legend on the right edge — DEVICES + DROPS sections built from
  * the shared legend model (lib/legendData.ts) so the export and the editor
- * ghost render identical content: one row per device category present on
- * the sheet, one row per drop group, clipped to the box with a "+ N more"
- * footer when the content overflows.
+ * ghost render identical content: one row per device subcategory present
+ * on the sheet (standardized icon inside the category-colored disc; a
+ * neutral OTHER row collects subcategory-less devices), one row per drop
+ * group, clipped to the box with a "+ N more" footer when the content
+ * overflows.
  */
 export function drawLegend({
   page,
@@ -390,6 +404,7 @@ export function drawLegend({
   theme,
   bounds,
   branding,
+  data: legendData,
 }: {
   page: PDFPage;
   fonts: BrandFonts;
@@ -399,8 +414,11 @@ export function drawLegend({
    *  fall back to the historical default top-right slot. */
   bounds?: { x: number; y: number; width: number; height: number };
   branding?: BrandingConfig;
+  /** Prebuilt legend model — lets the caller size side-strip bounds from
+   *  the same data without rebuilding it. */
+  data?: LegendData;
 }) {
-  const data = buildLegendData(sheet.markups);
+  const data = legendData ?? buildLegendData(sheet.markups);
   if (data.totalItems === 0) return;
 
   const palette = paletteFor(theme, resolveBranding(branding));
@@ -473,15 +491,57 @@ export function drawLegend({
       });
       return;
     }
-    // Row marker: colored disc for devices (category color); faceplate
-    // square echoing the canvas drop for drops (midnight plate, blue
-    // stroke, amber jack).
+    // Row marker: colored disc for devices (category color, standardized
+    // subcategory icon inside); faceplate square echoing the canvas drop
+    // for drops (midnight plate, blue stroke, amber jack).
     if (line.kind === "device") {
+      const dcx = x + padding + 6;
+      const dcy = ly + 4;
       page.drawCircle({
-        x: x + padding + 6, y: ly + 4, size: 5,
+        x: dcx, y: dcy, size: 5,
         color: palette.bgInner,
         borderColor: hex(line.color), borderWidth: 0.6,
       });
+      if (line.icon) {
+        const color = hex(line.color);
+        // Same soft fill the device disc uses on the sheet itself
+        // (mix(color, midnight, 0.78) in exportMarkupPdf) so the legend
+        // icon reads identically to the placed device.
+        const fillSoft = mixRgb(color, KN_MIDNIGHT, 0.78);
+        const iconSize = 8;
+        const scale = iconSize / 24;
+        for (const p of line.icon.paths) {
+          const fill =
+            p.fill === "currentFill"
+              ? fillSoft
+              : p.fill === "currentStroke"
+              ? color
+              : p.fill
+              ? hex(p.fill)
+              : undefined;
+          const stroke =
+            p.stroke === "currentStroke"
+              ? color
+              : p.stroke === "currentFill"
+              ? fillSoft
+              : p.stroke
+              ? hex(p.stroke)
+              : undefined;
+          page.drawSvgPath(p.d, {
+            x: dcx - iconSize / 2,
+            y: dcy + iconSize / 2,
+            scale,
+            color: fill,
+            borderColor: stroke,
+            // Legend icons draw at ~1/3 canvas scale — scale the stroke
+            // back proportionally, floored for print legibility.
+            borderWidth:
+              stroke !== undefined
+                ? Math.max(0.55, (p.strokeWidth ?? 1.4) * 0.6)
+                : 0,
+          });
+        }
+      }
     } else {
       page.drawRectangle({
         x: x + padding + 1, y: ly - 1, width: 10, height: 10,

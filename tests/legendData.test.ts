@@ -1,14 +1,21 @@
 // @vitest-environment node
 // Patch 18 — shared legend model (src/lib/legendData.ts), consumed by BOTH
 // the markup-PDF export (titleBlockRenderer drawLegend) and the editor ghost
-// (BrandPreview LegendGhost) so they can never drift:
-//   - DEVICES groups per device CATEGORY (user decision: not per model)
-//   - DROPS groups jack type → service → bare "DROPS" fallback, with jack
-//     types uppercased so "cat 6" / "Cat 6" merge into one row
+// (BrandPreview LegendGhost) so they can never drift. Patch 19 — DEVICES rows
+// group per SUBCATEGORY (user decision 2026-11-05) with a neutral OTHER row
+// for subcategory-less devices, rows carry the standardized icon, and the
+// side-strip bounds helper is covered:
+//   - DEVICES groups per subcategory (APs, Switches, Routers, Dome, …) —
+//     one row per subcategory present on the sheet, disc in the CATEGORY
+//     color, the standardized subcategory icon inside it, qty right-aligned
+//   - subcategory-less catalog devices roll into one neutral OTHER row
+//     (user decision 2026-11-05), regardless of category
+//   - DROPS groups jack type → service → bare "DROPS" fallback, jack types
+//     uppercased so "cat 6" / "Cat 6" merge into one row
 //   - section order DEVICES → DROPS; a stranded section header (zero rows
 //     below it after clipping) is dropped, never drawn
 //   - clipping to the fixed 180×200 default legend box budget (11 line
-//     units) with a "+ N more" footer
+//     units) with a "+ N more" footer; sideLegendBounds sizes the strip box
 //   - the standardized subcategory icon stamp on the device catalog
 import { describe, it, expect } from "vitest";
 import {
@@ -21,6 +28,10 @@ import {
   LEGEND_HEADER_HEIGHT,
   LEGEND_LINE_HEIGHT,
   LEGEND_PADDING,
+  OTHER_ROW_LABEL,
+  sideLegendBounds,
+  LEGEND_STRIP_WIDTH,
+  LEGEND_STRIP_BOX_X,
   type LegendData,
   type LegendDeviceRow,
   type LegendDropRow,
@@ -121,13 +132,16 @@ describe("buildLegendData", () => {
   const switches = devices.filter((d) => d.subcategory === "Switches");
   const cameras = devices.filter((d) => d.category === "cameras");
 
-  it("groups devices per CATEGORY, not per model", () => {
+  it("groups devices per SUBCATEGORY (Patch 19), not per category or model", () => {
     expect(switches.length).toBeGreaterThanOrEqual(2);
     expect(switches.every((d) => d.category === "network")).toBe(true);
+    const dome = cameras.find((d) => d.subcategory === "Dome")!;
+    const bullet = cameras.find((d) => d.subcategory === "Bullet")!;
     const markups: Markup[] = [
       deviceMarkup(switches[0].id),
       deviceMarkup(switches[1].id),
-      deviceMarkup(cameras[0].id),
+      deviceMarkup(dome.id),
+      deviceMarkup(bullet.id),
       dropMarkup({ jackType: "Cat 6" }),
       dropMarkup({ jackType: "cat 6" }),
       dropMarkup({ service: "voice" }),
@@ -136,28 +150,61 @@ describe("buildLegendData", () => {
     expect(data.sections.map((s) => s.title)).toEqual(["DEVICES", "DROPS"]);
 
     const dev = data.sections[0];
-    expect(dev.rows).toHaveLength(2); // Network + Cameras, not per-model
-    const network = dev.rows.find(
-      (r) => r.kind === "device" && r.key === "network",
+    // Switches (2 models) collapse to ONE row; Dome + Bullet are separate.
+    expect(dev.rows.map((r) => r.key)).toEqual(["Switches", "Dome", "Bullet"]);
+    const swRow = dev.rows.find(
+      (r) => r.kind === "device" && r.key === "Switches",
     ) as LegendDeviceRow;
-    expect(network).toMatchObject({ label: "Network", qty: 2 });
-    expect(network.color).toBe(categoryColor.network);
-    const cams = dev.rows.find(
-      (r) => r.kind === "device" && r.key === "cameras",
+    expect(swRow.label).toBe("Switches");
+    expect(swRow.qty).toBe(2);
+    // Disc keeps the CATEGORY color (network green)…
+    expect(swRow.color).toBe(categoryColor.network);
+    // …and the row carries the standardized subcategory icon (same object
+    // the catalog stamps — the one the canvas/palette/export draws).
+    expect(swRow.icon).toBeDefined();
+    expect(swRow.icon).toBe(devicesById[switches[0].id].icon);
+    const domeRow = dev.rows.find(
+      (r) => r.kind === "device" && r.key === "Dome",
     ) as LegendDeviceRow;
-    expect(cams.qty).toBe(1);
+    expect(domeRow.color).toBe(categoryColor.cameras);
+    expect(domeRow.qty).toBe(1);
 
     const drops = data.sections[1];
     expect(drops.rows.map((r) => [r.label, r.qty])).toEqual([
       ["CAT 6 DROPS", 2], // "Cat 6" + "cat 6" merged by normalization
       ["Phone DROPS", 1],
     ]);
-    expect(data.totalItems).toBe(6);
+    expect(data.totalItems).toBe(7);
+  });
+
+  it("rolls subcategory-less devices into one neutral OTHER row", () => {
+    const noSub = devices.filter((d) => !d.subcategory);
+    expect(noSub.length).toBeGreaterThan(0);
+    const markups: Markup[] = noSub.map((d) => deviceMarkup(d.id));
+    const data = buildLegendData(markups);
+    const dev = data.sections[0];
+    expect(dev.rows).toHaveLength(1);
+    const row = dev.rows[0] as LegendDeviceRow;
+    expect(row.key).toBe(OTHER_ROW_LABEL);
+    expect(row.label).toBe("OTHER");
+    expect(row.qty).toBe(noSub.length);
+    // Neutral disc, no icon — subcategory-less devices have neither.
+    expect(row.color).toBe("#94A0B8");
+    expect(row.icon).toBeUndefined();
+    expect(data.totalItems).toBe(noSub.length);
+  });
+
+  it("OTHER row sorts last among DEVICES rows", () => {
+    const noSub = devices.find((d) => !d.subcategory)!;
+    const data = buildLegendData([
+      deviceMarkup(cameras.find((d) => d.subcategory === "Dome")!.id),
+      deviceMarkup(noSub.id),
+    ]);
+    const keys = data.sections[0].rows.map((r) => r.key);
+    expect(keys[keys.length - 1]).toBe(OTHER_ROW_LABEL);
   });
 
   it("skips device markups whose id does not resolve in the catalog", () => {
-    // Raw fixture — bypasses the catalog-resolving helper, which throws on
-    // unknown ids before buildLegendData gets a chance to skip them.
     const unknown: DeviceMarkup = {
       id: "m-unknown",
       kind: "device",
@@ -303,6 +350,54 @@ describe("layoutLegend", () => {
       11,
     );
     expect(l.itemCountLabel).toBe("1 ITEM");
+  });
+});
+
+// ───────── side-strip placement (Patch 19) ─────────
+
+describe("sideLegendBounds", () => {
+  it("places the 180-wide box inside the widened page's strip", () => {
+    const data: LegendData = {
+      sections: [section("DEVICES", [deviceRow("a"), deviceRow("b")])],
+      totalItems: 3,
+    };
+    // Typical arch sheet: 24×36 landscape (864×518pt) + 200 strip.
+    const pw = 864 + LEGEND_STRIP_WIDTH;
+    const ph = 518;
+    const b = sideLegendBounds(pw, ph, data);
+    expect(b.width).toBe(180);
+    // Inside the strip: right of the plan, left of the page edge.
+    expect(b.x).toBe(pw - LEGEND_STRIP_WIDTH + LEGEND_STRIP_BOX_X);
+    expect(b.x).toBeGreaterThanOrEqual(864);
+    expect(b.x + b.width).toBeLessThanOrEqual(pw);
+    // Top-anchored (pdf y-up: y measured from the page BOTTOM).
+    expect(b.y + b.height).toBe(ph - 12);
+    // Auto-height: 2 rows + header = 2 header units → content height.
+    const units = 1 + 2; // section header + 2 rows
+    expect(b.height).toBe(units * LEGEND_LINE_HEIGHT + LEGEND_PADDING * 2 + LEGEND_HEADER_HEIGHT + 2);
+  });
+
+  it("caps the box at the page height so tiny sheets clip, not overflow", () => {
+    const data: LegendData = {
+      sections: [section("DEVICES", Array.from({ length: 30 }, (_, i) => deviceRow(`d${i}`)))],
+      totalItems: 30,
+    };
+    const b = sideLegendBounds(400, 100, data);
+    expect(b.height).toBeLessThanOrEqual(100);
+    expect(b.y).toBeGreaterThanOrEqual(0);
+    expect(b.y + b.height).toBeLessThanOrEqual(100);
+  });
+
+  it("keeps a sane minimum height even with a single row", () => {
+    const data: LegendData = {
+      sections: [section("DROPS", [dropRow("CAT 6 DROPS")])],
+      totalItems: 1,
+    };
+    const b = sideLegendBounds(1064, 518, data);
+    // 1 section header + 1 row = 2 units → header + 2 lines + padding fits.
+    expect(b.height).toBeGreaterThanOrEqual(
+      LEGEND_HEADER_HEIGHT + LEGEND_PADDING * 2 + 2,
+    );
   });
 });
 

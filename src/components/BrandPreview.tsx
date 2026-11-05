@@ -648,6 +648,46 @@ function LegendGhost({
   // floating empty rect is more confusing than nothing.
   if (data.totalItems === 0) return null;
 
+  // Side placement (Patch 19): the legend exports onto a strip BESIDE the
+  // plan, widening that sheet's PDF page — there is no box to drag on the
+  // canvas. A full-width ghost would lie (the stage clips beyond sheet
+  // bounds), so pin a compact chip inside the sheet instead.
+  if (sheet.legendPlacement === "side") {
+    return (
+      <Group
+        x={sheet.pageWidth - 86}
+        y={8}
+        listening={interactive}
+        onClick={onSelect}
+        onTap={onSelect}
+        onMouseDown={onSelect}
+      >
+        <Rect
+          width={80}
+          height={14}
+          cornerRadius={3}
+          fill={palette.bg}
+          stroke={palette.accent}
+          strokeWidth={0.5}
+          opacity={0.95}
+        />
+        <Text
+          text="LEGEND → SIDE PANEL"
+          x={5}
+          y={4.5}
+          width={70}
+          fontSize={5.5}
+          fontStyle="700"
+          fontFamily="JetBrains Mono, monospace"
+          fill={palette.ink2}
+          letterSpacing={0.4}
+          ellipsis
+          wrap="none"
+        />
+      </Group>
+    );
+  }
+
   const { x, y, width: w, height: h } = bounds;
   const headerH = LEGEND_HEADER_HEIGHT;
   const padding = LEGEND_PADDING;
@@ -748,14 +788,56 @@ function LegendGhost({
           return (
             <Group key={`l-${i}`}>
               {line.kind === "device" ? (
-                <Circle
-                  x={padding + 6}
-                  y={ly + 6}
-                  radius={5}
-                  fill={palette.bgInner}
-                  stroke={line.color}
-                  strokeWidth={0.6}
-                />
+                <>
+                  <Circle
+                    x={padding + 6}
+                    y={ly + 6}
+                    radius={5}
+                    fill={palette.bgInner}
+                    stroke={line.color}
+                    strokeWidth={0.6}
+                  />
+                  {line.icon && (
+                    // Standardized subcategory icon inside the disc —
+                    // mirrors the export (token resolution identical to
+                    // DeviceIconNode; Konva group scaling handles the
+                    // stroke weight).
+                    <Group
+                      x={padding + 6 - 4}
+                      y={ly + 6 - 4}
+                      scaleX={1 / 3}
+                      scaleY={1 / 3}
+                      listening={false}
+                    >
+                      {line.icon.paths.map((p, pi) => {
+                        const soft = line.color + "33";
+                        const fill =
+                          p.fill === "currentFill"
+                            ? soft
+                            : p.fill === "currentStroke"
+                            ? line.color
+                            : p.fill;
+                        const stroke =
+                          p.stroke === "currentStroke"
+                            ? line.color
+                            : p.stroke === "currentFill"
+                            ? soft
+                            : p.stroke;
+                        return (
+                          <Path
+                            key={pi}
+                            data={p.d}
+                            fill={fill}
+                            stroke={stroke}
+                            strokeWidth={p.strokeWidth ?? 0}
+                            lineJoin="round"
+                            lineCap="round"
+                          />
+                        );
+                      })}
+                    </Group>
+                  )}
+                </>
               ) : (
                 <>
                   <Rect

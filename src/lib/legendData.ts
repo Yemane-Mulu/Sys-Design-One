@@ -4,10 +4,13 @@
 // apart; they differ only in how they paint the same lines (pdf-lib y-up
 // vs. Konva y-down).
 //
-// Sections (user-directed, 2026-11-04):
-//   DEVICES — one row per device CATEGORY present on the sheet (per-category
-//             chosen over per-model), colored disc in the category color,
-//             qty right-aligned.
+// Sections (user-directed, 2026-11-04 / Patch 19, 2026-11-05):
+//   DEVICES — one row per device SUBCATEGORY present on the sheet (APs,
+//             Switches, Routers, Dome, …), disc in the category color, the
+//             standardized subcategory icon drawn inside it, qty
+//             right-aligned. Catalog devices with no subcategory roll into
+//             one neutral "OTHER" row (user decision 2026-11-05) regardless
+//             of category.
 //   DROPS   — one row per drop group keyed jack type → service → bare
 //             "DROPS" fallback, faceplate-square icon echoing the canvas
 //             drop. Drops are documentation-only (Patch 15): they never
@@ -15,7 +18,8 @@
 
 import type { DropMarkup, DropService, Markup } from "../store/projectStore";
 import { devicesById } from "../data/devices";
-import { categoryColor, categoryLabel, colors } from "../brand/tokens";
+import type { DeviceType } from "../data/devices";
+import { categoryColor, colors } from "../brand/tokens";
 
 /** Legend geometry budget, in PDF points. The default legend box is the
  *  fixed 180×200 rect from defaultLegendBounds() and the export always
@@ -55,12 +59,16 @@ export function dropGroupLabel(m: DropMarkup): string {
 
 export interface LegendDeviceRow {
   kind: "device";
-  /** Category id — the grouping key. */
+  /** Subcategory name — the grouping key ("Switches", "Dome", …);
+   *  "OTHER" for the subcategory-less fallback row. */
   key: string;
   label: string;
   /** Category hex — the disc color. */
   color: string;
   qty: number;
+  /** Standardized subcategory icon (24×24 paths, theme tokens) —
+   *  absent on the OTHER fallback row and on drop rows. */
+  icon?: DeviceType["icon"];
 }
 
 export interface LegendDropRow {
@@ -93,32 +101,66 @@ export interface LegendData {
   totalItems: number;
 }
 
+/** Label of the fallback row for catalog devices with no subcategory
+ *  (user decision 2026-11-05: one neutral row regardless of category). */
+export const OTHER_ROW_LABEL = "OTHER";
+
+/** Neutral disc color for the fallback row — subcategory-less devices have
+ *  no category color of their own on the legend. */
+export const OTHER_ROW_COLOR = colors.ink300;
+
 /** Aggregate a sheet's markups into the shared legend model. */
 export function buildLegendData(markups: Markup[]): LegendData {
-  const deviceQty = new Map<string, number>();
+  // Per-subcategory buckets: qty + the standardized icon (read from the
+  // catalog record — the stamp loop in devices.ts has already replaced
+  // every mapped subcategory's placeholder, so this is the exact icon the
+  // canvas/palette/export draws).
+  const subQty = new Map<string, { qty: number; color: string; icon?: DeviceType["icon"] }>();
+  let otherQty = 0;
   const dropQty = new Map<string, number>();
   for (const m of markups) {
     if (m.kind === "device") {
       const dev = devicesById[m.deviceId];
       if (!dev) continue;
-      deviceQty.set(dev.category, (deviceQty.get(dev.category) ?? 0) + 1);
+      if (dev.subcategory) {
+        const cur = subQty.get(dev.subcategory);
+        if (cur) cur.qty += 1;
+        else
+          subQty.set(dev.subcategory, {
+            qty: 1,
+            color: categoryColor[dev.category] ?? "#94A0B8",
+            icon: dev.icon,
+          });
+      } else {
+        otherQty += 1;
+      }
     } else if (m.kind === "drop") {
       const key = dropGroupLabel(m);
       dropQty.set(key, (dropQty.get(key) ?? 0) + 1);
     }
   }
   const sections: LegendSection[] = [];
-  if (deviceQty.size > 0) {
-    sections.push({
-      title: "DEVICES",
-      rows: Array.from(deviceQty.entries()).map(([category, qty]) => ({
+  if (subQty.size > 0 || otherQty > 0) {
+    const rows: LegendDeviceRow[] = Array.from(subQty.entries()).map(
+      ([sub, bucket]) => ({
         kind: "device" as const,
-        key: category,
-        label: categoryLabel[category] ?? category,
-        color: categoryColor[category] ?? "#94A0B8",
-        qty,
-      })),
-    });
+        key: sub,
+        label: sub,
+        color: bucket.color,
+        qty: bucket.qty,
+        icon: bucket.icon,
+      }),
+    );
+    if (otherQty > 0) {
+      rows.push({
+        kind: "device",
+        key: OTHER_ROW_LABEL,
+        label: OTHER_ROW_LABEL,
+        color: OTHER_ROW_COLOR,
+        qty: otherQty,
+      });
+    }
+    sections.push({ title: "DEVICES", rows });
   }
   if (dropQty.size > 0) {
     sections.push({
@@ -208,4 +250,43 @@ export function layoutLegend(data: LegendData, capacity: number): LegendLayout {
   }
   if (overflow > 0) lines.push({ type: "more", count: overflow });
   return { lines, overflow, totalItems: data.totalItems, itemCountLabel: label };
+}
+
+// ───────── side-strip placement (Patch 19) ─────────
+//
+// `overlay` (default) keeps the legend box on top of the plan inside the
+// sheet. `side` widens that sheet's exported PDF page by a strip to the
+// right of the plan and draws the legend inside it — the floor plan area
+// is never covered. Geometry below is in **pdf page coords** (y-up,
+// bottom-left origin), matching what drawLegend consumes.
+
+/** Total width the exported page grows by in side mode. */
+export const LEGEND_STRIP_WIDTH = 200;
+/** Legend box's left margin inside the strip (box is 180 wide). */
+export const LEGEND_STRIP_BOX_X = 10;
+/** Top margin between the strip's page edge and the legend box. */
+export const LEGEND_STRIP_TOP = 12;
+
+/** Bounds of the legend box in side mode, in pdf page coords. Auto-height
+ *  from the model's content (header + section headers + rows), capped at
+ *  the page height so a tiny sheet clips with the `+ N more` footer
+ *  instead of running off the page. */
+export function sideLegendBounds(
+  pageWidth: number,
+  pageHeight: number,
+  data: LegendData,
+): { x: number; y: number; width: number; height: number } {
+  const units = legendUnitCount(data);
+  const contentH =
+    units * LEGEND_LINE_HEIGHT + LEGEND_PADDING * 2 + LEGEND_HEADER_HEIGHT + 2;
+  const h = Math.max(
+    LEGEND_HEADER_HEIGHT + LEGEND_PADDING * 2 + 2,
+    Math.min(contentH, pageHeight - LEGEND_STRIP_TOP * 2),
+  );
+  return {
+    x: pageWidth - LEGEND_STRIP_WIDTH + LEGEND_STRIP_BOX_X,
+    y: pageHeight - LEGEND_STRIP_TOP - h,
+    width: 180,
+    height: h,
+  };
 }
