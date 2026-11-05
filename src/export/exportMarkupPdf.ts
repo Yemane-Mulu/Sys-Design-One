@@ -155,11 +155,11 @@ export async function exportMarkupPdf(project: Project) {
 
   // v2.0: every sheet is exportable, regardless of source kind. PDF
   // sheets keep the original page as the underlay (pixel-perfect re-
-  // export). Non-PDF sheets (DXF / SVG / raster) get a blank page sized
-  // to the sheet's pageWidth / pageHeight; markups + title block render
-  // over a blank background. A future pass can rasterize the DXF or
-  // embed the SVG/raster as a PDF image — for now markups-only keeps
-  // the export pipeline reliable for every kind.
+  // export, with a pdf.js raster fallback when pdf-lib can't re-embed
+  // the page). Raster and SVG sheets embed their background as a
+  // full-page image so the drawing is never lost. DXF / IFC / missing
+  // sources still get a blank page sized to the sheet's pageWidth /
+  // pageHeight with markups + title block over white.
   const includedSheets = project.sheets;
   let appendedSheetCount = 0;
   for (let i = 0; i < project.sheets.length; i++) {
@@ -192,7 +192,6 @@ export async function exportMarkupPdf(project: Project) {
         // embedding it as a full-page image, so the floor plan always
         // makes it into the deliverable instead of silently exporting
         // as a blank page.
-        let vectorCopied = false;
         try {
           const src = await PDFDocument.load(bytes);
           const srcPage = src.getPages()[0];
@@ -200,7 +199,6 @@ export async function exportMarkupPdf(project: Project) {
           if (rotation === 0) {
             const [copied] = await out.copyPages(src, [0]);
             out.addPage(copied);
-            vectorCopied = true;
           } else {
           // The source page carries a /Rotate flag (common for sheets
           // exported/scanned with a portrait MediaBox that's displayed
@@ -227,7 +225,6 @@ export async function exportMarkupPdf(project: Project) {
           );
           const rotatedPage = out.addPage([sheet.pageWidth, sheet.pageHeight]);
           rotatedPage.drawPage(embedded, { x: 0, y: 0 });
-          vectorCopied = true;
         }
         } catch (vectorErr) {
           // Vector re-embed failed — rasterize the source page instead.
@@ -242,10 +239,27 @@ export async function exportMarkupPdf(project: Project) {
           );
         }
       }
-      // Non-PDF sources (DXF / SVG / raster / IFC / missing) get a blank
-      // page sized to the sheet — markups + title block draw over white.
+      // Non-PDF sources: raster and SVG backgrounds are embedded as a
+      // full-page image so the drawing survives the export. Anything we
+      // can't embed yet (DXF / IFC / missing source) falls back to a
+      // blank page sized to the sheet — markups + title block draw over
+      // white.
       if (sourceKind !== "pdf") {
-        out.addPage([sheet.pageWidth, sheet.pageHeight]);
+        const embedded = await embedNonPdfUnderlay(out, sheet);
+        if (embedded) {
+          pushToast(
+            "info",
+            `Export: "${sheet.name}" background embedded as an image.`,
+          );
+        } else {
+          out.addPage([sheet.pageWidth, sheet.pageHeight]);
+          if (sheet.source) {
+            pushToast(
+              "error",
+              `Export: "${sheet.name}" background (${sheet.source.kind}) can't be embedded yet — sheet exported markups-only.`,
+            );
+          }
+        }
       }
       const page = out.getPage(out.getPageCount() - 1);
       const theme = resolveTheme(project.brandTheme, sheet.bgColor);
@@ -802,6 +816,157 @@ async function embedSourcePageAsRaster(
     width: sheet.pageWidth,
     height: sheet.pageHeight,
   });
+}
+
+/**
+ * Underlay embedding for non-PDF sheets. Raster sheets (PNG/JPG/WebP/
+ * TIFF/BMP) and SVG sheets render fine in the editor via an <img> tag,
+ * but the old export path dropped them and emitted a blank page — the
+ * "my floor plan is missing" bug. We decode the background through the
+ * browser's own image pipeline, paint it to a canvas capped at ~16 MP
+ * (browser canvas-area limits), and embed the result as a full-page
+ * JPEG sized to the sheet's pageWidth/pageHeight — the same coordinate
+ * frame every markup on the sheet was authored in.
+ *
+ * Returns true when a page was added, false when there's nothing we can
+ * embed (DXF / IFC / missing source / undecodable bytes) so the caller
+ * can fall back to a blank page.
+ */
+async function embedNonPdfUnderlay(
+  out: PDFDocument,
+  sheet: Sheet,
+): Promise<boolean> {
+  const source = sheet.source;
+  try {
+    if (source?.kind === "raster") {
+      const img = await loadImageFromBytes(source.bytes, source.mime);
+      const jpg = await embedImageElementAsJpg(
+        out,
+        img,
+        sheet.pageWidth,
+        sheet.pageHeight,
+      );
+      if (!jpg) return false;
+      const page = out.addPage([sheet.pageWidth, sheet.pageHeight]);
+      page.drawImage(jpg, {
+        x: 0,
+        y: 0,
+        width: sheet.pageWidth,
+        height: sheet.pageHeight,
+      });
+      return true;
+    }
+    if (source?.kind === "svg") {
+      const img = await loadSvgImage(
+        source.text,
+        source.viewBoxW,
+        source.viewBoxH,
+      );
+      const jpg = await embedImageElementAsJpg(
+        out,
+        img,
+        sheet.pageWidth,
+        sheet.pageHeight,
+      );
+      if (!jpg) return false;
+      const page = out.addPage([sheet.pageWidth, sheet.pageHeight]);
+      page.drawImage(jpg, {
+        x: 0,
+        y: 0,
+        width: sheet.pageWidth,
+        height: sheet.pageHeight,
+      });
+      return true;
+    }
+  } catch (e) {
+    console.warn(
+      `[export] non-PDF underlay failed on sheet "${sheet.name}":`,
+      e,
+    );
+  }
+  return false;
+}
+
+/** Decode raw image bytes through the browser into an HTMLImageElement. */
+function loadImageFromBytes(bytes: Uint8Array, mime: string): Promise<HTMLImageElement> {
+  const blob = new Blob([new Uint8Array(bytes)], { type: mime });
+  const url = URL.createObjectURL(blob);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`browser could not decode ${mime} background image`));
+    };
+    img.src = url;
+  });
+}
+
+/**
+ * Load SVG source text as an image. Standalone SVG files often carry a
+ * viewBox but no width/height attributes, which leaves the rasterized
+ * bitmap at 0×0 in some browsers — inject explicit dimensions from the
+ * stored viewBox so the decode always has an intrinsic size.
+ */
+function loadSvgImage(
+  text: string,
+  viewBoxW: number,
+  viewBoxH: number,
+): Promise<HTMLImageElement> {
+  let svg = text;
+  if (!/\bwidth\s*=/i.test(svg.slice(0, 2000))) {
+    const w = Math.max(1, Math.round(viewBoxW));
+    const h = Math.max(1, Math.round(viewBoxH));
+    svg = svg.replace(/<svg\b/i, `<svg width="${w}" height="${h}"`);
+  }
+  const blob = new Blob([svg], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(blob);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("browser could not rasterize SVG background"));
+    };
+    img.src = url;
+  });
+}
+
+/**
+ * Paint a loaded image onto a canvas (downscaling only when the pixels
+ * would exceed the ~16 MP browser canvas-area limit) and embed it as a
+ * JPEG. Returns null when the image has no decodable pixels.
+ */
+async function embedImageElementAsJpg(
+  out: PDFDocument,
+  img: HTMLImageElement,
+  targetW: number,
+  targetH: number,
+): Promise<PDFImage | null> {
+  const naturalW = img.naturalWidth || targetW;
+  const naturalH = img.naturalHeight || targetH;
+  if (!(naturalW > 0 && naturalH > 0)) return null;
+  const MAX_AREA = 16_000_000;
+  const scale = Math.min(1, Math.sqrt(MAX_AREA / (naturalW * naturalH)));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.floor(naturalW * scale));
+  canvas.height = Math.max(1, Math.floor(naturalH * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+  const base64 = dataUrl.split(",")[1];
+  if (!base64) return null;
+  const jpgBytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  return out.embedJpg(jpgBytes);
 }
 
 // ───────────── Masks (cover-ups) ─────────────
