@@ -156,7 +156,19 @@ describe("buildLegendData", () => {
   });
 
   it("skips device markups whose id does not resolve in the catalog", () => {
-    const data = buildLegendData([deviceMarkup("not-a-real-device-id")]);
+    // Raw fixture — bypasses the catalog-resolving helper, which throws on
+    // unknown ids before buildLegendData gets a chance to skip them.
+    const unknown: DeviceMarkup = {
+      id: "m-unknown",
+      kind: "device",
+      layer: "network",
+      deviceId: "not-a-real-device-id",
+      category: "network",
+      x: 0,
+      y: 0,
+      tag: "T-99",
+    };
+    const data = buildLegendData([unknown]);
     expect(data.sections).toHaveLength(0);
     expect(data.totalItems).toBe(0);
   });
