@@ -374,3 +374,11 @@ By explicit user instruction ("I want what we created as the main"), the fork's 
   - Functional smoke (tsc-emitted CJS copies, deleted after): real-catalog per-subcategory grouping (Switches 3 → 1 row qty 3; Dome/Bullet separate; category colors; icon = catalog-stamped object), OTHER row (7 devices → 1 neutral row, sorts last), unknown-id skip, sideLegendBounds (strip x/right/top-anchor/auto-height math, 100pt-page cap, minimum height), overlay layout regression — **all assertions passed**
   - `npm test` / `npm run build`: **via CI** (user-approved push below) — local runs impossible (child-process spawn EPERM); the pre-existing Patch 16 `pdfjs.ts:14` import crash (`CI-ERROR-NOTE.md`) still red-lines the suite step and is out of scope here
   - No dev/preview/watch server started; no secrets written; no existing test weakened, skipped, or deleted
+
+### Patch 19 CI evidence (2026-11-05)
+
+- **Runs 41986552114** (`verify`, `Sys-Design-One`, head `f5bdd60`) and **41986555458** (`verify`, `main`, head `f5bdd60`): existing suite **FAILED** with exactly **one** finding — the **pre-existing** `src/lib/pdfjs.ts:14` module-load crash (`TypeError: default is not a constructor` via `exportMarkupPdf.ts` → `tests/exportMarkupPdf.rotation.test.ts`), annotations byte-identical to the `aad0bc9`/`3233a04` baseline. **No Patch 19 failure annotations** — `tests/legendData.test.ts` (subcategory grouping, OTHER row, side bounds) and `tests/projectFileValidation.test.ts` (placement union) passed behind that import crash; `tsc -b`/`vite build` steps never run (the suite step aborts the job), same as every run since Patch 16.
+- **Cloudflare `Workers Builds: sys-design-one` check on `f5bdd60`: SUCCESS** (completed after a short build queue) — the deploy pipeline builds the Patch 19 tree cleanly.
+- Both branches verified at `f5bdd60ccf8a3b3a46dcc0831269014e8d1ec6af` via `git ls-remote` after push; working tree clean.
+- The suite cannot go green until the Patch 16-era `pdfjs.ts` constructor is made lazy — recorded in `../CI-ERROR-NOTE.md`, awaiting user direction, deliberately out of Patch 19's approved scope.
+- No dev/preview/watch server started; no secrets written; evidence captured via the GitHub Actions API (`gh api` check-runs/annotations + `gh run list`).
