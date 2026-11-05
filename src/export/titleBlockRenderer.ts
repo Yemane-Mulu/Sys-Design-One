@@ -313,9 +313,13 @@ export function drawTitleBlock(opts: TitleBlockOpts) {
     thickness: 0.4, color: palette.divider,
   });
 
-  // 4-column metadata
+  // Metadata grid. Wide boxes get the classic 4 columns; narrow boxes
+  // (the 180pt side strip — Patch 20) switch to a 2×2 grid so values
+  // aren't clipped to ~4 characters per cell.
   const metaY = by - (projTitleSize + 20);
-  const colW = (w - 20) / 4;
+  const compact = w < 240;
+  const colW = (w - 20) / (compact ? 2 : 4);
+  const rowStep = compact ? 24 : 0;
   const cells = [
     { label: "PROJECT", value: safeText(project.meta.projectNumber) || "-" },
     {
@@ -334,26 +338,31 @@ export function drawTitleBlock(opts: TitleBlockOpts) {
     },
   ];
   cells.forEach((c, i) => {
-    const cx = bx + colW * i;
+    const col = compact ? i % 2 : i;
+    const row = compact ? Math.floor(i / 2) : 0;
+    const cx = bx + colW * col;
+    const cy = metaY - row * rowStep;
     page.drawText(c.label, {
-      x: cx, y: metaY + 11, size: 6,
+      x: cx, y: cy + 11, size: 6,
       font: fonts.bold, color: palette.ink3,
     });
     drawTextClipped(page, c.value, {
-      x: cx, y: metaY, size: 9,
+      x: cx, y: cy, size: 9,
       font: fonts.bold, color: palette.ink,
       maxWidth: colW - 4,
     });
   });
 
-  // Sheet title (if there's room)
-  if (metaY - 16 > y + footerH) {
+  // Sheet title (if there's room) — shifted past the compact grid's
+  // second row so it never overlaps it.
+  const titleBase = metaY - rowStep - 16;
+  if (titleBase > y + footerH) {
     page.drawText("SHEET TITLE", {
-      x: bx, y: metaY - 16, size: 6,
+      x: bx, y: titleBase, size: 6,
       font: fonts.bold, color: palette.ink3,
     });
     drawTextClipped(page, safeText(sheet.sheetTitle || sheet.name).toUpperCase(), {
-      x: bx, y: metaY - 26, size: 9,
+      x: bx, y: titleBase - 10, size: 9,
       font: fonts.bold, color: palette.ink,
       maxWidth: w - 20,
     });

@@ -94,10 +94,12 @@ const allowedMarkupKindSet = new Set<string>(ALLOWED_MARKUP_KINDS);
 const DROP_SERVICES = new Set(["data", "poe", "voice", "coax", "fiber"]);
 const DROP_MOUNTS = new Set(["wall", "floor", "ceiling", "pole", "box"]);
 
-/** Legend placement per sheet (Patch 19) — mirrors the "overlay" | "side"
- *  union on Sheet in src/store/projectStore.ts. Absent = overlay, so old
- *  files stay valid; a present-but-unknown value is rejected. */
+/** Legend / title-block placement per sheet (Patch 19/20) — mirrors the
+ *  "overlay" | "side" unions on Sheet in src/store/projectStore.ts.
+ *  Absent = overlay, so old files stay valid; a present-but-unknown value
+ *  is rejected. */
 const LEGEND_PLACEMENTS = new Set(["overlay", "side"]);
+const TITLEBLOCK_PLACEMENTS = new Set(["overlay", "side"]);
 
 /** Allowed serialized sheet-source kinds (from sheetSource.ts). */
 const allowedSourceKindSet = new Set(["pdf", "dxf", "svg", "raster", "ifc"]);
@@ -313,6 +315,16 @@ export function validateProjectFilePayload(payload: unknown): void {
         invalid(
           `${sheetPath}.legendPlacement`,
           `unsupported legend placement ${JSON.stringify(sh.legendPlacement)}`,
+        );
+      }
+      if (
+        sh.titleBlockPlacement !== undefined &&
+        (typeof sh.titleBlockPlacement !== "string" ||
+          !TITLEBLOCK_PLACEMENTS.has(sh.titleBlockPlacement))
+      ) {
+        invalid(
+          `${sheetPath}.titleBlockPlacement`,
+          `unsupported title block placement ${JSON.stringify(sh.titleBlockPlacement)}`,
         );
       }
       if (Array.isArray(sh.markups)) {

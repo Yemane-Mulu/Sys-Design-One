@@ -481,6 +481,17 @@ function BrandingPanel() {
     );
   };
 
+  const onTbPlacement = (placement: "overlay" | "side") => {
+    if (!sheet) return;
+    updateSheet(sheet.id, { titleBlockPlacement: placement });
+    pushToast(
+      "info",
+      placement === "side"
+        ? "Title block exports on a side panel beside the plan"
+        : "Title block exports on top of the plan",
+    );
+  };
+
   const onResetAll = () => {
     let n = 0;
     for (const sh of project.sheets) {
@@ -555,6 +566,40 @@ function BrandingPanel() {
         <Wand2 className="w-3.5 h-3.5" />
         Select legend
       </button>
+      {/* Patch 20 — where the title block exports: on the plan (overlay)
+          or on the side strip. Per-sheet, default overlay. */}
+      <div className="flex items-center gap-1.5">
+        <PanelRight className="w-3.5 h-3.5 text-amber-knox" />
+        <div className="label">Title block placement</div>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <button
+          onClick={() => onTbPlacement("overlay")}
+          disabled={!sheet}
+          className={`btn-ghost w-full justify-start text-xs disabled:opacity-50 ${
+            sheet?.titleBlockPlacement !== "side" ? "text-amber-knox" : ""
+          }`}
+          title="Title block on top of the plan (drag to position it)"
+        >
+          <Layers className="w-3.5 h-3.5" />
+          On plan
+        </button>
+        <button
+          onClick={() => onTbPlacement("side")}
+          disabled={!sheet}
+          className={`btn-ghost w-full justify-start text-xs disabled:opacity-50 ${
+            sheet?.titleBlockPlacement === "side" ? "text-amber-knox" : ""
+          }`}
+          title="Title block on a side panel beside the plan — never covers the drawing"
+        >
+          <PanelRight className="w-3.5 h-3.5" />
+          Side panel
+        </button>
+      </div>
+      <p className="text-[10px] text-ink-400 leading-relaxed">
+        Side panel moves the title block (project, sheet, date, scale note)
+        onto the strip too — bottom-anchored under a side legend.
+      </p>
       {/* Patch 19 — where the legend exports: on the plan (overlay) or on a
           strip beside it (side). Per-sheet, default overlay. */}
       <div className="flex items-center gap-1.5">

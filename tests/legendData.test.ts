@@ -30,8 +30,10 @@ import {
   LEGEND_PADDING,
   OTHER_ROW_LABEL,
   sideLegendBounds,
+  sideTitleBlockBounds,
   LEGEND_STRIP_WIDTH,
   LEGEND_STRIP_BOX_X,
+  LEGEND_STRIP_TITLE_HEIGHT,
   type LegendData,
   type LegendDeviceRow,
   type LegendDropRow,
@@ -398,6 +400,48 @@ describe("sideLegendBounds", () => {
     expect(b.height).toBeGreaterThanOrEqual(
       LEGEND_HEADER_HEIGHT + LEGEND_PADDING * 2 + 2,
     );
+  });
+});
+
+// ───────── side-strip title block (Patch 20) ─────────
+
+describe("sideTitleBlockBounds", () => {
+  it("bottom-anchors the 180-wide title block inside the strip", () => {
+    const pw = 864 + LEGEND_STRIP_WIDTH;
+    const ph = 518;
+    const b = sideTitleBlockBounds(pw, ph);
+    expect(b.width).toBe(180);
+    expect(b.height).toBe(LEGEND_STRIP_TITLE_HEIGHT); // mirrors the 138pt overlay default
+    // Bottom-anchored (pdf y-up): y IS the bottom edge, 16pt above the
+    // page bottom; the box top sits at y+height, leaving everything
+    // above clear for the top-anchored legend.
+    expect(b.y).toBe(16);
+    expect(b.x).toBe(pw - LEGEND_STRIP_WIDTH + LEGEND_STRIP_BOX_X);
+    expect(b.x).toBeGreaterThanOrEqual(864); // right of the plan
+    expect(b.x + b.width).toBeLessThanOrEqual(pw); // left of the page edge
+    expect(b.y + b.height).toBe(16 + LEGEND_STRIP_TITLE_HEIGHT);
+  });
+
+  it("stacks under a side legend without overlap on a typical sheet", () => {
+    // Legend top-anchored (Patch 19): 2 rows + header ≈ 124pt tall from the
+    // top; title block bottom-anchored 138pt tall — no overlap on 518pt.
+    const pw = 1064;
+    const ph = 518;
+    const data: LegendData = {
+      sections: [section("DEVICES", [deviceRow("a"), deviceRow("b")])],
+      totalItems: 3,
+    };
+    const lg = sideLegendBounds(pw, ph, data);
+    const tb = sideTitleBlockBounds(pw, ph);
+    expect(lg.y).toBeGreaterThan(tb.y + tb.height);
+  });
+
+  it("caps the height on very short pages (never runs off the page)", () => {
+    const b = sideTitleBlockBounds(400, 100);
+    expect(b.y).toBeGreaterThanOrEqual(0);
+    expect(b.y + b.height).toBeLessThanOrEqual(100);
+    expect(b.height).toBeLessThanOrEqual(100 - 32); // 16pt margins × 2
+    expect(b.height).toBeGreaterThanOrEqual(50);
   });
 });
 

@@ -225,6 +225,47 @@ function TitleBlockGhost({
     }
   }, [selected, interactive]);
 
+  // Side placement (Patch 20): the title block exports onto the widened
+  // strip beside the plan — there is no box to drag on the canvas, and a
+  // full ghost would lie (the stage clips beyond sheet bounds), so pin a
+  // compact chip inside the sheet instead (stacked under the legend chip).
+  if (sheet.titleBlockPlacement === "side") {
+    const chipY = sheet.legendPlacement === "side" ? 24 : 8;
+    return (
+      <Group
+        x={sheet.pageWidth - 86}
+        y={chipY}
+        listening={interactive}
+        onClick={onSelect}
+        onTap={onSelect}
+        onMouseDown={onSelect}
+      >
+        <Rect
+          width={80}
+          height={14}
+          cornerRadius={3}
+          fill={palette.bg}
+          stroke={palette.accent}
+          strokeWidth={0.5}
+          opacity={0.95}
+        />
+        <Text
+          text="TITLE BLOCK → SIDE PANEL"
+          x={5}
+          y={4.5}
+          width={70}
+          fontSize={5}
+          fontStyle="700"
+          fontFamily="JetBrains Mono, monospace"
+          fill={palette.ink2}
+          letterSpacing={0.3}
+          ellipsis
+          wrap="none"
+        />
+      </Group>
+    );
+  }
+
   const { x, y, width: w, height: h } = bounds;
   const headerH = Math.max(20, Math.min(30, h * 0.19));
   const accentH = Math.max(2, h * 0.022);
@@ -258,9 +299,11 @@ function TitleBlockGhost({
   ];
   // Inset the metadata grid to leave breathing room on either side and
   // give each column a clipped width so long values don't bleed into the
-  // next cell.
+  // next cell. Narrow boxes (the 180pt side strip — Patch 20) switch to a
+  // 2×2 grid so values aren't clipped to ~4 characters per cell.
   const innerPad = 10;
-  const colW = (w - innerPad * 2) / 4;
+  const compactMeta = w < 240;
+  const colW = (w - innerPad * 2) / (compactMeta ? 2 : 4);
 
   // Header sub-layout — wordmark gets only as much room as it needs;
   // tagline only renders when there's clear daylight between the
@@ -290,7 +333,9 @@ function TitleBlockGhost({
   const labelLineH = 6 * LH;
   const valueLineH = 9 * LH;
   const valueY = metaY + labelLineH + 1;
-  const sheetTitleLabelY = valueY + valueLineH + 6;
+  // Compact (2×2) grid: second row sits one full label+value pair lower.
+  const metaRowStep = compactMeta ? labelLineH + valueLineH + 4 : 0;
+  const sheetTitleLabelY = valueY + valueLineH + 6 + metaRowStep;
   const sheetTitleValueY = sheetTitleLabelY + labelLineH + 1;
   // Footer is anchored to the bottom of the rect, top-aligned within its
   // own band so it never overflows the accent strip below.
@@ -461,34 +506,38 @@ function TitleBlockGhost({
             heights so they cannot overlap each other. Values clip to
             their column width so long project numbers / dates can't bleed
             into the neighbor cell. */}
-        {cells.map((c, i) => (
-          <Group key={c.label}>
-            <Text
-              text={c.label}
-              x={innerPad + colW * i}
-              y={metaY}
-              width={colW - 4}
-              fontSize={6}
-              fontStyle="700"
-              fontFamily="Inter, system-ui, sans-serif"
-              fill={palette.ink3}
-              ellipsis
-              wrap="none"
-            />
-            <Text
-              text={c.value}
-              x={innerPad + colW * i}
-              y={valueY}
-              width={colW - 4}
-              fontSize={9}
-              fontStyle="700"
-              fontFamily="Inter, system-ui, sans-serif"
-              fill={palette.ink}
-              ellipsis
-              wrap="none"
-            />
-          </Group>
-        ))}
+        {cells.map((c, i) => {
+          const col = compactMeta ? i % 2 : i;
+          const row = compactMeta ? Math.floor(i / 2) : 0;
+          return (
+            <Group key={c.label}>
+              <Text
+                text={c.label}
+                x={innerPad + colW * col}
+                y={metaY + row * metaRowStep}
+                width={colW - 4}
+                fontSize={6}
+                fontStyle="700"
+                fontFamily="Inter, system-ui, sans-serif"
+                fill={palette.ink3}
+                ellipsis
+                wrap="none"
+              />
+              <Text
+                text={c.value}
+                x={innerPad + colW * col}
+                y={valueY + row * metaRowStep}
+                width={colW - 4}
+                fontSize={9}
+                fontStyle="700"
+                fontFamily="Inter, system-ui, sans-serif"
+                fill={palette.ink}
+                ellipsis
+                wrap="none"
+              />
+            </Group>
+          );
+        })}
         {/* Sheet title only renders when there's room above the footer
             band; otherwise it's quietly suppressed instead of overlapping
             the "NOT TO SCALE / BY ..." line in the footer. */}

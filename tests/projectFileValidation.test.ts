@@ -213,6 +213,35 @@ describe("malformed files are rejected without partial load", () => {
     ).rejects.toThrow(/unsupported legend placement "diagonal"/);
   });
 
+  // Patch 20 — per-sheet title block placement union, same contract.
+  it("rejects unsupported title block placements", async () => {
+    await expect(
+      parseProjectFileText(
+        editedPayload((p) => {
+          p.project.sheets[0].titleBlockPlacement = "floating";
+        }),
+      ),
+    ).rejects.toThrow(/unsupported title block placement "floating"/);
+  });
+
+  it("accepts overlay and side title block placements (and absent = overlay)", async () => {
+    stubObjectUrls();
+    const overlay = await parseProjectFileText(
+      editedPayload((p) => {
+        p.project.sheets[0].titleBlockPlacement = "overlay";
+      }),
+    );
+    expect(overlay.sheets[0]?.titleBlockPlacement).toBe("overlay");
+    const side = await parseProjectFileText(
+      editedPayload((p) => {
+        p.project.sheets[0].titleBlockPlacement = "side";
+      }),
+    );
+    expect(side.sheets[0]?.titleBlockPlacement).toBe("side");
+    const absent = await parseProjectFileText(basePayloadJson());
+    expect(absent.sheets[0]?.titleBlockPlacement).toBeUndefined();
+  });
+
   it("accepts overlay and side legend placements (and absent = overlay)", async () => {
     stubObjectUrls();
     const overlay = await parseProjectFileText(

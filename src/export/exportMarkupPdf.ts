@@ -30,6 +30,7 @@ import {
 import {
   buildLegendData,
   sideLegendBounds,
+  sideTitleBlockBounds,
   LEGEND_STRIP_WIDTH,
   type LegendData,
 } from "../lib/legendData";
@@ -172,14 +173,17 @@ export async function exportMarkupPdf(project: Project) {
     const sheet = project.sheets[i];
     try {
       const sourceKind = sheet.source?.kind ?? (sheet.pdfBytes ? "pdf" : null);
-      // Patch 19 — side placement widens this sheet's exported page with a
-      // legend strip beside the plan. Everything drawn (markups, masks,
-      // title block) stays anchored in sheet coords, so the floor plan
-      // itself is never touched or covered. A sheet with no legend content
-      // keeps its original page size.
+      // Patch 19/20 — either brand element can move onto a side strip that
+      // widens this sheet's exported page. Everything drawn (markups,
+      // masks) stays anchored in sheet coords, so the floor plan itself is
+      // never touched or covered. The title block ALWAYS has content, so
+      // its side placement widens the page unconditionally; the legend only
+      // widens when it has rows to draw.
       const legendData = buildLegendData(sheet.markups);
+      const tbSide = sheet.titleBlockPlacement === "side";
       const side =
-        sheet.legendPlacement === "side" && legendData.totalItems > 0;
+        tbSide ||
+        (sheet.legendPlacement === "side" && legendData.totalItems > 0);
       const pageW = sheet.pageWidth + (side ? LEGEND_STRIP_WIDTH : 0);
       const pageH = sheet.pageHeight;
       // Temporary diagnostic: log the sheet's source state so we can see
@@ -319,8 +323,8 @@ export async function exportMarkupPdf(project: Project) {
       }
       // 3. Title block — at the user's chosen rect (sheet.titleBlockBounds)
       //    or the default bottom-right placement when they haven't moved
-      //    it yet. Both editor and export agree on the default via
-      //    `defaultTitleBlockBounds`.
+      //    it yet; in side mode (Patch 20) it moves onto the widened strip
+      //    (bottom-anchored, under a side legend), never covering the plan.
       const tbApp =
         sheet.titleBlockBounds ?? defaultTitleBlockBounds(sheet);
       try {
@@ -332,7 +336,9 @@ export async function exportMarkupPdf(project: Project) {
           sheetIndex: i,
           totalSheets: project.sheets.length,
           theme,
-          bounds: appBoundsToPage(tbApp, sheet),
+          bounds: tbSide
+            ? sideTitleBlockBounds(pageW, pageH)
+            : appBoundsToPage(tbApp, sheet),
           branding,
           logoImage,
         });

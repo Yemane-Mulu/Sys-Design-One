@@ -290,3 +290,36 @@ export function sideLegendBounds(
     height: h,
   };
 }
+
+// ───────── side-strip title block (Patch 20) ─────────
+//
+// The title block can join the legend on the side strip: bottom-anchored
+// in the strip so a side legend (top-anchored, above) and the title block
+// stack like a classic drawing sheet. Width is the strip box width (180) —
+// the overlay default 280–380 does not fit — with a compact 2×2 metadata
+// grid at that width (handled by the renderers).
+
+/** Title block height on the side strip — mirrors the 138pt overlay
+ *  default from sheetAnalysis.defaultTitleBlockBounds. */
+export const LEGEND_STRIP_TITLE_HEIGHT = 138;
+/** Bottom margin between the strip's page edge and the title block. */
+export const LEGEND_STRIP_TITLE_BOTTOM = 16;
+
+/** Bounds of the title block in side mode, in pdf page coords (y-up).
+ *  Bottom-anchored; height capped on very short pages (16pt bottom
+ *  margin + at least 16pt of headroom) so it never runs off the page. */
+export function sideTitleBlockBounds(
+  pageWidth: number,
+  pageHeight: number,
+): { x: number; y: number; width: number; height: number } {
+  const h = Math.max(
+    50,
+    Math.min(LEGEND_STRIP_TITLE_HEIGHT, pageHeight - LEGEND_STRIP_TITLE_BOTTOM * 2),
+  );
+  return {
+    x: pageWidth - LEGEND_STRIP_WIDTH + LEGEND_STRIP_BOX_X,
+    y: LEGEND_STRIP_TITLE_BOTTOM,
+    width: 180,
+    height: h,
+  };
+}

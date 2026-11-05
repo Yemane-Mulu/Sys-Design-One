@@ -382,3 +382,27 @@ By explicit user instruction ("I want what we created as the main"), the fork's 
 - Both branches verified at `f5bdd60ccf8a3b3a46dcc0831269014e8d1ec6af` via `git ls-remote` after push; working tree clean.
 - The suite cannot go green until the Patch 16-era `pdfjs.ts` constructor is made lazy — recorded in `../CI-ERROR-NOTE.md`, awaiting user direction, deliberately out of Patch 19's approved scope.
 - No dev/preview/watch server started; no secrets written; evidence captured via the GitHub Actions API (`gh api` check-runs/annotations + `gh run list`).
+
+## Patch 20 — Title block joins the legend on the side panel (user-directed)
+
+- **Source:** user instruction, 2026-11-05 — "can we bundle the DesignOne System Designer box that is on the sheets … [option A] please": the branded title block gets the same side-panel placement option as the legend (Patch 19). Plan preserved in `../HANDOFF-PATCH20.md`; decisions answered 2026-11-05 (legend top / title bottom stack; 2×2 metadata grid) and approved with push ("Approved — implement + push").
+- **Purpose:** the title block (project name/location, PROJECT/SHEET/REV/DATE cells, scale note — "1" = X'" / custom / NOT TO SCALE — BY, sheet index) can export onto the widened side strip beside the plan instead of covering it, for floor plans with no empty space.
+- **Reason:** same motivation as Patch 19 — the overlay title block covers plan linework on dense sheets; the side strip guarantees neither brand element ever covers the drawing.
+- **Decisions (2026-11-05):** strip stack = **legend top-anchored, title block bottom-anchored** (classic drawing sheet; both in the same 200pt strip — the page widens once); metadata at the strip's 180pt width = **2×2 grid** (PROJECT/SHEET row, REV/DATE row) so values aren't clipped to ~40pt cells; placement fields stay **independent** — either, both, or neither element on the panel.
+- **Changed files:**
+  - `src/store/projectStore.ts` — `Sheet.titleBlockPlacement?: "overlay" | "side"` (absent = overlay)
+  - `src/lib/legendData.ts` — `LEGEND_STRIP_TITLE_HEIGHT` 138, `LEGEND_STRIP_TITLE_BOTTOM` 16, `sideTitleBlockBounds(pageW, pageH)`: x = strip box x, **y = 16 (bottom edge; pdf y-up)**, width 180, height capped `max(50, min(138, pageH − 32))` on tiny pages
+  - `src/export/exportMarkupPdf.ts` — widen condition ORs `titleBlockPlacement === "side"` (title block always has content — unconditional widen) with the Patch 19 legend condition; title-block bounds = `sideTitleBlockBounds(pageW, pageH)` in side mode, `appBoundsToPage(tbApp, sheet)` otherwise
+  - `src/export/titleBlockRenderer.ts` — `drawTitleBlock` metadata grid switches **4 columns → 2×2** when `bounds.width < 240` (`colW = (w−20)/2`, `rowStep 24`, cells map `i%2` / `⌊i/2⌋`); SHEET TITLE block shifts below the compact grid's second row (`metaY − rowStep − 16`), unchanged when not compact
+  - `src/components/BrandPreview.tsx` — `TitleBlockGhost` mirrors the 2×2 compact grid (`metaRowStep`, cells mapped `i%2`/`⌊i/2⌋`, sheet-title shift); side mode renders a compact `TITLE BLOCK → SIDE PANEL` chip pinned inside the sheet edge (stacked under the legend chip at y=24 when both are side; a fake box would lie — the stage clips beyond sheet bounds)
+  - `src/components/LeftRail.tsx` — "Title block placement: On plan / Side panel" toggle pair above the legend pair (same amber-active pattern, `updateSheet({ titleBlockPlacement })`, per-sheet toast)
+  - `src/lib/projectFile.ts` — `TITLEBLOCK_PLACEMENTS` set + sheet-level union check when present (absent passes; unknown rejected)
+  - `tests/legendData.test.ts` — extended: `sideTitleBlockBounds` (bottom-anchor at y=16, inside-strip math, box top at y+height, no-overlap stack under a side legend incl. a 9-unit legend, tiny-page cap with 50pt floor)
+  - `tests/projectFileValidation.test.ts` — extended: rejects `titleBlockPlacement: "floating"`, accepts `"overlay"`/`"side"`, absent = undefined
+- **Bid isolation (explicit):** `src/lib/bid.ts` untouched — placement is presentation-only.
+- **Verification (2026-11-05):**
+  - `tsc -b` (Type_Check): **passed** — local run, on the full changed tree
+  - `tsc --noEmit --strict` on both modified test files: **passed** (tests aren't covered by `tsc -b`, which includes `src` only)
+  - Functional smoke (tsc-emitted CJS copies, deleted after): bottom-anchor geometry (y=16, top at 154), inside-strip placement, **stack-under-legend no-overlap** (2-row and 9-unit legends vs the 138pt block on a 518pt page), tiny-page cap (50pt floor) — **all assertions passed**. The smoke's first run caught a wrong test expectation (top-anchored reading of pdf y-up) — test-only, corrected; no production code changed
+  - `npm test` / `npm run build`: **via CI** (user-approved push below) — local runs impossible (child-process spawn EPERM); the pre-existing Patch 16 `pdfjs.ts:14` import crash (`CI-ERROR-NOTE.md`) still red-lines the suite step and is out of scope here
+  - No dev/preview/watch server started; no secrets written; no existing test weakened, skipped, or deleted

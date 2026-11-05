@@ -329,6 +329,11 @@ export interface Sheet {
    *  PDF page with a legend strip beside the plan so the drawing is never
    *  covered. */
   legendPlacement?: "overlay" | "side";
+  /** Patch 20 — where the title block exports on this sheet. Same contract
+   *  as `legendPlacement`: `overlay` (default/absent) draws it on top of
+   *  the plan at `titleBlockBounds`; `side` moves it onto the widened
+   *  strip beside the plan (bottom-anchored under a side legend). */
+  titleBlockPlacement?: "overlay" | "side";
 }
 
 // ───────── Markup types ─────────
