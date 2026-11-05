@@ -7,7 +7,15 @@ import {
   StandardFonts,
 } from "pdf-lib";
 import type { Project, Sheet, Markup } from "../store/projectStore";
-import { devicesById } from "../data/devices";
+import {
+  buildLegendData,
+  layoutLegend,
+  legendCapacityUnits,
+  LEGEND_HEADER_HEIGHT,
+  LEGEND_LINE_HEIGHT,
+  LEGEND_PADDING,
+  DROP_PLATE_COLORS,
+} from "../lib/legendData";
 import {
   categoryColor as catColor,
   categoryLabel as catLabel,
@@ -369,8 +377,11 @@ export function drawTitleBlock(opts: TitleBlockOpts) {
 }
 
 /**
- * Draws the device legend on the right edge — icons + counts for every device
- * type used on this sheet.
+ * Draws the legend on the right edge — DEVICES + DROPS sections built from
+ * the shared legend model (lib/legendData.ts) so the export and the editor
+ * ghost render identical content: one row per device category present on
+ * the sheet, one row per drop group, clipped to the box with a "+ N more"
+ * footer when the content overflows.
  */
 export function drawLegend({
   page,
@@ -389,26 +400,16 @@ export function drawLegend({
   bounds?: { x: number; y: number; width: number; height: number };
   branding?: BrandingConfig;
 }) {
-  const counts = new Map<string, number>();
-  for (const m of sheet.markups) {
-    if (m.kind === "device") {
-      counts.set(m.deviceId, (counts.get(m.deviceId) ?? 0) + 1);
-    }
-  }
-  if (counts.size === 0) return;
-  const entries = Array.from(counts.entries()).map(([id, qty]) => ({
-    dev: devicesById[id],
-    qty,
-  })).filter((e) => e.dev);
-  if (entries.length === 0) return;
+  const data = buildLegendData(sheet.markups);
+  if (data.totalItems === 0) return;
 
   const palette = paletteFor(theme, resolveBranding(branding));
-  const lineH = 14;
-  const padding = 10;
-  const headerH = 18;
+  const lineH = LEGEND_LINE_HEIGHT;
+  const padding = LEGEND_PADDING;
+  const headerH = LEGEND_HEADER_HEIGHT;
 
   // Resolve bounds — explicit user choice, otherwise default top-right
-  // sized to fit the entries we have.
+  // sized to fit the full model.
   let x: number;
   let y: number;
   let w: number;
@@ -419,18 +420,18 @@ export function drawLegend({
     w = bounds.width;
     h = bounds.height;
   } else {
+    const units = data.sections.reduce(
+      (sum, sec) => sum + (sec.rows.length > 0 ? sec.rows.length + 1 : 0),
+      0,
+    );
     const { width: pw, height: ph } = page.getSize();
     w = 180;
-    h = entries.length * lineH + padding * 2 + headerH + 2;
+    h = units * lineH + padding * 2 + headerH + 2;
     x = pw - w - 16;
     y = ph - h - 16;
   }
 
-  // How many rows fit in the user's box? If they shrunk it, we clip and
-  // append a "+ N more" footer rather than overflow the rectangle.
-  const maxLines = Math.max(0, Math.floor((h - headerH - padding * 2) / lineH));
-  const visible = entries.slice(0, maxLines);
-  const overflow = entries.length - visible.length;
+  const layout = layoutLegend(data, legendCapacityUnits(h));
 
   page.drawRectangle({
     x, y, width: w, height: h,
@@ -447,50 +448,63 @@ export function drawLegend({
     x: x + padding, y: y + h - 14, size: 9,
     font: fonts.bold, color: palette.onAccent,
   });
-  const typesLabel = `${entries.length} ${entries.length === 1 ? "TYPE" : "TYPES"}`;
-  const typesW = fonts.bold.widthOfTextAtSize(typesLabel, 7);
-  page.drawText(typesLabel, {
-    x: x + w - padding - typesW, y: y + h - 14, size: 7,
+  const countLabel = safeText(layout.itemCountLabel);
+  const countW = fonts.bold.widthOfTextAtSize(countLabel, 7);
+  page.drawText(countLabel, {
+    x: x + w - padding - countW, y: y + h - 14, size: 7,
     font: fonts.bold, color: palette.onAccent,
   });
 
-  visible.forEach((e, i) => {
-    // pdf-lib y-up: row 0 sits just below the header, row N sits closer
-    // to the bottom of the rect.
+  layout.lines.forEach((line, i) => {
+    // pdf-lib y-up: line 0 sits just below the header, later lines run
+    // down toward the bottom of the rect.
     const ly = y + h - headerH - padding - lineH * (i + 1) + 2;
-    const color = hex(catColor[e.dev.category] ?? "#94A0B8");
-    page.drawCircle({
-      x: x + padding + 6, y: ly + 4, size: 5,
-      color: palette.bgInner,
-      borderColor: color, borderWidth: 0.6,
-    });
-    drawTextClipped(page, safeText(e.dev.shortCode), {
-      x: x + padding + 16, y: ly + 1, size: 7,
-      font: fonts.bold, color,
-      maxWidth: 30,
-    });
-    drawTextClipped(page, safeText(e.dev.label), {
-      x: x + padding + 50, y: ly + 1, size: 8,
+    if (line.type === "header") {
+      page.drawText(safeText(line.title), {
+        x: x + padding, y: ly + 1, size: 7,
+        font: fonts.bold, color: palette.ink2,
+      });
+      return;
+    }
+    if (line.type === "more") {
+      page.drawText(safeText(`+ ${line.count} more`), {
+        x: x + padding, y: ly, size: 8,
+        font: fonts.regular, color: palette.ink2,
+      });
+      return;
+    }
+    // Row marker: colored disc for devices (category color); faceplate
+    // square echoing the canvas drop for drops (midnight plate, blue
+    // stroke, amber jack).
+    if (line.kind === "device") {
+      page.drawCircle({
+        x: x + padding + 6, y: ly + 4, size: 5,
+        color: palette.bgInner,
+        borderColor: hex(line.color), borderWidth: 0.6,
+      });
+    } else {
+      page.drawRectangle({
+        x: x + padding + 1, y: ly - 1, width: 10, height: 10,
+        color: hex(DROP_PLATE_COLORS.plate),
+        borderColor: hex(DROP_PLATE_COLORS.stroke), borderWidth: 0.7,
+      });
+      page.drawCircle({
+        x: x + padding + 6, y: ly + 4, size: 1.3,
+        color: hex(DROP_PLATE_COLORS.jack),
+      });
+    }
+    drawTextClipped(page, safeText(line.label), {
+      x: x + padding + 16, y: ly + 1, size: 8,
       font: fonts.regular, color: palette.ink,
-      maxWidth: w - padding * 2 - 50 - 24,
+      maxWidth: w - padding * 2 - 16 - 24,
     });
-    const qty = String(e.qty);
+    const qty = String(line.qty);
     const qw = fonts.bold.widthOfTextAtSize(qty, 9);
     page.drawText(qty, {
       x: x + w - padding - qw, y: ly, size: 9,
       font: fonts.bold, color: palette.accent,
     });
   });
-
-  if (overflow > 0) {
-    page.drawText(safeText(`+ ${overflow} more`), {
-      x: x + padding,
-      y: y + padding,
-      size: 8,
-      font: fonts.regular,
-      color: palette.ink2,
-    });
-  }
 }
 
 // ───────── Helpers ─────────

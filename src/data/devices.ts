@@ -6157,6 +6157,234 @@ export const devices: DeviceType[] = [
   },
 ];
 
+// ───────── Standardized subcategory icons ─────────
+//
+// One distinct 24×24 line icon per subcategory (19 total), drawn in-house:
+// NetBox ships no icon SVGs (it's a DCIM data tool; the catalog already
+// cross-references its port specs). Stamped over the inline placeholder
+// shapes by a loop right after the array literal so every device in a
+// subcategory shares one icon and `devicesById` (derived below) inherits
+// it. Path format matches DeviceType.icon.paths: theme tokens
+// `currentFill` / `currentStroke` — never hard hex — so one definition
+// themes on canvas (DeviceIconNode), palette tile (DeviceTile), the
+// properties panel, and the PDF export. Stroke weight ~1.4 keeps the line
+// work readable at small sizes; any subcategory without a drawing here
+// keeps its inline placeholder above.
+
+type IconPath = DeviceType["icon"]["paths"][number];
+type StdIcon = DeviceType["icon"];
+
+/** Filled + outlined main shape (chassis / plate / body). */
+const iconBody = (d: string): IconPath => ({
+  d,
+  fill: "currentFill",
+  stroke: "currentStroke",
+  strokeWidth: 1.4,
+});
+
+/** Unfilled detail line work (ports, arrows, brackets, rings). */
+const iconLine = (d: string, strokeWidth = 1.1): IconPath => ({
+  d,
+  stroke: "currentStroke",
+  strokeWidth,
+});
+
+/** Solid accent detail (lens dots, port squares, tips). */
+const iconDot = (d: string): IconPath => ({ d, fill: "currentStroke" });
+
+/** Full circle at (cx, cy) with radius r, in path-data form. */
+const circlePath = (cx: number, cy: number, r: number): string =>
+  `M${cx} ${cy} m${-r} 0 a${r} ${r} 0 1 0 ${r * 2} 0 a${r} ${r} 0 1 0 ${-r * 2} 0`;
+
+const STANDARD_SUBCATEGORY_ICONS: Record<string, StdIcon> = {
+  // Switch — 1U chassis, two port rows, uplink arrows.
+  Switches: {
+    paths: [
+      iconBody("M3 7 h18 v10 h-18 z"),
+      iconLine("M5.5 10 h2 M8.5 10 h2 M11.5 10 h2 M14.5 10 h2"),
+      iconLine("M5.5 13.8 h2 M8.5 13.8 h2 M11.5 13.8 h2 M14.5 13.8 h2"),
+      iconLine(
+        "M17.4 15 V10.8 M16.2 12 L17.4 10.8 L18.6 12 M20 15 V10.8 M18.8 12 L20 10.8 L21.2 12",
+        1,
+      ),
+    ],
+  },
+  // Firewall — brick wall + flame.
+  Firewalls: {
+    paths: [
+      iconBody("M4 10 h16 v9 h-16 z"),
+      iconLine(
+        "M4 13 h16 M4 16 h16 M8 10 v3 M14 10 v3 M11 13 v3 M17 13 v3 M8 16 v3 M14 16 v3",
+        0.9,
+      ),
+      iconDot(
+        "M12 2.8 c1.7 1.5 2.5 2.7 2.5 4 c0 1.4 -1.1 2.4 -2.5 2.4 c-1.4 0 -2.5 -1 -2.5 -2.4 c0 -1.3 0.8 -2.5 2.5 -4 z",
+      ),
+    ],
+  },
+  // Router — circular chassis + cross-route arrows.
+  Routers: {
+    paths: [
+      iconBody(circlePath(12, 12, 7.5)),
+      iconLine(
+        "M12 8.2 v7.6 M8.2 12 h7.6 M12 8.2 l-1.6 1.6 M12 8.2 l1.6 1.6 M12 15.8 l-1.6 -1.6 M12 15.8 l1.6 -1.6 M8.2 12 l1.6 -1.6 M8.2 12 l1.6 1.6 M15.8 12 l-1.6 -1.6 M15.8 12 l1.6 1.6",
+      ),
+    ],
+  },
+  // Gateway — arch + packet arrows through it.
+  Gateways: {
+    paths: [
+      iconLine("M6 19 v-5.5 a6 6 0 0 1 12 0 V19", 1.4),
+      iconLine("M4.5 19 h15", 1.4),
+      iconLine(
+        "M8.8 12 h3.2 M10 10.8 L8.8 12 L10 13.2 M13 12 h3.2 M15 10.8 L16.2 12 L15 13.2",
+        1,
+      ),
+    ],
+  },
+  // Infrastructure — rack enclosure shelves + vents.
+  Infrastructure: {
+    paths: [
+      iconBody("M5 3 h14 v18 h-14 z"),
+      iconLine("M5 8.5 h14 M5 13.5 h14"),
+      iconLine("M8 5.5 h1.6 M11.2 5.5 h1.6 M14.4 5.5 h1.6", 1),
+    ],
+  },
+  // Wireless (network) — mast + radiating arcs.
+  Wireless: {
+    paths: [
+      iconLine("M12 20.5 V10.5 M9 20.5 h6", 1.4),
+      iconDot(circlePath(12, 8.6, 1.3)),
+      iconLine("M8.6 7 a4.8 4.8 0 0 1 6.8 0 M6.9 4.9 a7 7 0 0 1 10.2 0", 1.2),
+    ],
+  },
+  // Access Point — ceiling puck + 3 coverage arcs.
+  "Access Points": {
+    paths: [
+      iconLine("M8.5 2.8 h7", 1.4),
+      iconBody("M7.5 4.2 h9 v3 h-9 z"),
+      iconLine(
+        "M8.4 10.6 a3.6 3.6 0 0 0 7.2 0 M6.4 13.2 a6 6 0 0 0 11.2 0 M4.4 15.8 a8.4 8.4 0 0 0 15.2 0",
+        1.2,
+      ),
+    ],
+  },
+  // Bullet camera — tube + lens + mount bracket.
+  Bullet: {
+    paths: [
+      iconBody("M3.5 8.8 h11.5 a3.2 3.2 0 0 1 0 6.4 H3.5 z"),
+      iconLine(circlePath(15, 12, 2)),
+      iconDot(circlePath(15, 12, 0.9)),
+      iconLine("M2.2 9.6 v4.8 M2.2 12 h1.3", 1.2),
+    ],
+  },
+  // Dome camera — plate + half dome + lens dot.
+  Dome: {
+    paths: [
+      iconBody("M4.5 6.8 h15 v2.6 h-15 z"),
+      iconBody("M7 9.4 a5 5 0 0 0 10 0 z"),
+      iconDot(circlePath(12, 12.2, 1.3)),
+    ],
+  },
+  // Turret camera — front cylinder + lens ring + bracket.
+  Turret: {
+    paths: [
+      iconBody("M8 5.5 h8 v6.5 h-8 z"),
+      iconLine(circlePath(12, 12, 2.8)),
+      iconDot(circlePath(12, 12, 1.1)),
+      iconLine("M12 19 V16.2 M9.2 19 h5.6 M10.4 16.2 V14.9 M13.6 16.2 V14.9", 1.3),
+    ],
+  },
+  // Compact camera — small square + pinhole.
+  Compact: {
+    paths: [iconBody("M7.5 7.5 h9 v9 h-9 z"), iconDot(circlePath(12, 12, 1.1))],
+  },
+  // PTZ camera — head + stem + base + aim arrow.
+  PTZ: {
+    paths: [
+      iconBody(circlePath(12, 7.5, 3.4)),
+      iconDot(circlePath(12, 7.5, 1.3)),
+      iconLine("M12 11.2 V16.6 M8.8 19 h6.4 M9.8 19 L10.6 16.6 M14.2 19 L13.4 16.6", 1.3),
+      iconLine("M14.9 5.3 L18.2 2 M18.2 2 h-2.4 M18.2 2 v2.4", 1),
+    ],
+  },
+  // Fisheye camera — concentric rings.
+  Fisheye: {
+    paths: [
+      iconLine(circlePath(12, 12, 7.6), 1.4),
+      iconLine(circlePath(12, 12, 4.6)),
+      iconDot(circlePath(12, 12, 1.4)),
+    ],
+  },
+  // Box camera — box + lens + top bracket.
+  Box: {
+    paths: [
+      iconBody("M6 8 h12 v10 h-12 z"),
+      iconLine(circlePath(15.2, 13, 2.2)),
+      iconDot(circlePath(15.2, 13, 1)),
+      iconLine("M9.5 8 V5.2 M14.5 8 V5.2 M9.5 5.2 h5", 1.2),
+    ],
+  },
+  // Panoramic camera — wide bar + twin lens slots.
+  Panoramic: {
+    paths: [
+      iconBody("M3 9 h18 v6.5 h-18 z"),
+      iconLine(`${circlePath(7.9, 12.2, 1.6)} ${circlePath(16.1, 12.2, 1.6)}`),
+      iconDot(`${circlePath(7.9, 12.2, 0.7)} ${circlePath(16.1, 12.2, 0.7)}`),
+    ],
+  },
+  // Mini camera — tiny cube + pinhole.
+  Mini: {
+    paths: [
+      iconBody("M8.8 8.8 h6.4 v6.4 h-6.4 z"),
+      iconDot(circlePath(12, 12, 0.8)),
+      iconLine("M10.2 15.2 V17 M13.8 15.2 V17", 1.1),
+    ],
+  },
+  // Multisensor — main lens + two companions.
+  Multisensor: {
+    paths: [
+      iconBody(circlePath(12, 13, 4)),
+      iconDot(circlePath(12, 13, 1.5)),
+      iconLine(`${circlePath(6.2, 8.4, 2)} ${circlePath(17.8, 8.4, 2)}`),
+    ],
+  },
+  // Thermal camera — lens + heat waves.
+  Thermal: {
+    paths: [
+      iconBody(circlePath(12, 13.5, 4.2)),
+      iconDot(circlePath(12, 13.5, 1.6)),
+      iconLine(
+        "M7.8 6.8 q1.3 -1.3 2.6 0 M13.6 6.8 q1.3 -1.3 2.6 0 M10.7 4.7 q1.3 -1.3 2.6 0",
+        1.1,
+      ),
+    ],
+  },
+  // Site distribution — enclosure + ports + pigtails.
+  Distribution: {
+    paths: [
+      iconBody("M4 3.5 h16 v12.5 h-16 z"),
+      iconDot(
+        "M6.5 6.2 h2.2 v2.2 h-2.2 z M10.9 6.2 h2.2 v2.2 h-2.2 z M15.3 6.2 h2.2 v2.2 h-2.2 z",
+      ),
+      iconLine(
+        "M7 16 c0 1.8 1.6 1.8 1.6 3.2 M12 16 c0 1.8 1.6 1.8 1.6 3.2 M17 16 c0 1.8 1.6 1.8 1.6 3.2",
+        1.1,
+      ),
+    ],
+  },
+};
+
+// Stamp the standardized icon onto every catalog entry with a mapped
+// subcategory — in place, BEFORE devicesById is derived below, so the
+// lookup map (and every consumer reading it) inherits the same icon
+// object. Entries whose subcategory has no drawing keep their inline
+// placeholder above.
+for (const d of devices) {
+  const std = d.subcategory ? STANDARD_SUBCATEGORY_ICONS[d.subcategory] : undefined;
+  if (std) d.icon = std;
+}
+
 // ───────── Default port inference ─────────
 // Explicit `ports` (from NetBox cross-reference) always wins; entries
 // without a match fall back to sensible defaults by category.

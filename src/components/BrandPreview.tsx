@@ -7,8 +7,15 @@ import {
   type BrandBounds,
   type BrandSelection,
 } from "../store/projectStore";
-import { devicesById } from "../data/devices";
-import { categoryColor } from "../brand/tokens";
+import {
+  buildLegendData,
+  layoutLegend,
+  legendCapacityUnits,
+  LEGEND_HEADER_HEIGHT,
+  LEGEND_LINE_HEIGHT,
+  LEGEND_PADDING,
+  DROP_PLATE_COLORS,
+} from "../lib/legendData";
 import {
   resolveTheme,
   defaultTitleBlockBounds,
@@ -633,28 +640,19 @@ function LegendGhost({
     }
   }, [selected, interactive]);
 
-  // Aggregate device counts on this sheet.
-  const counts = new Map<string, number>();
-  for (const m of sheet.markups) {
-    if (m.kind === "device") {
-      counts.set(m.deviceId, (counts.get(m.deviceId) ?? 0) + 1);
-    }
-  }
-  const entries = Array.from(counts.entries())
-    .map(([id, qty]) => ({ dev: devicesById[id], qty }))
-    .filter((e) => e.dev);
+  // Aggregate from the shared legend model — the exact data the export
+  // draws, so the ghost can never drift from the printed sheet.
+  const data = buildLegendData(sheet.markups);
 
   // Don't render an empty legend at all — there's nothing to show and a
   // floating empty rect is more confusing than nothing.
-  if (entries.length === 0) return null;
+  if (data.totalItems === 0) return null;
 
   const { x, y, width: w, height: h } = bounds;
-  const headerH = 18;
-  const padding = 10;
-  const lineH = 14;
-  const maxLines = Math.max(0, Math.floor((h - headerH - padding * 2) / lineH));
-  const visible = entries.slice(0, maxLines);
-  const overflow = entries.length - visible.length;
+  const headerH = LEGEND_HEADER_HEIGHT;
+  const padding = LEGEND_PADDING;
+  const lineH = LEGEND_LINE_HEIGHT;
+  const layout = layoutLegend(data, legendCapacityUnits(h));
 
   const onDragEnd = (e: any) => {
     onChange({ x: e.target.x(), y: e.target.y(), width: w, height: h });
@@ -705,7 +703,7 @@ function LegendGhost({
           fill={palette.onAccent}
         />
         <Text
-          text={`${entries.length} ${entries.length === 1 ? "TYPE" : "TYPES"}`}
+          text={layout.itemCountLabel}
           x={w - 60}
           y={(headerH - 7 * 1.25) / 2}
           width={50}
@@ -715,36 +713,74 @@ function LegendGhost({
           fontFamily="Inter, system-ui, sans-serif"
           fill={palette.onAccent}
         />
-        {visible.map((e, i) => {
+        {layout.lines.map((line, i) => {
+          // Konva y-down: line 0 sits just below the header, mirrored
+          // against the export's y-up row math.
           const ly = headerH + padding + lineH * i;
-          const color = categoryColor[e.dev.category] ?? "#94A0B8";
-          return (
-            <Group key={e.dev.id}>
-              <Circle
-                x={padding + 6}
-                y={ly + 6}
-                radius={5}
-                fill={palette.bgInner}
-                stroke={color}
-                strokeWidth={0.6}
-              />
+          if (line.type === "header") {
+            return (
               <Text
-                text={e.dev.shortCode}
-                x={padding + 16}
-                y={ly + 1}
-                width={32}
+                key={`l-${i}`}
+                text={line.title}
+                x={padding}
+                y={ly + 2}
                 fontSize={7}
                 fontStyle="700"
                 fontFamily="Inter, system-ui, sans-serif"
-                fill={color}
-                ellipsis
-                wrap="none"
+                fill={palette.ink2}
               />
+            );
+          }
+          if (line.type === "more") {
+            return (
               <Text
-                text={e.dev.label}
-                x={padding + 50}
+                key={`l-${i}`}
+                text={`+ ${line.count} more`}
+                x={padding}
                 y={ly + 1}
-                width={w - padding * 2 - 50 - 24}
+                fontSize={8}
+                fontStyle="600"
+                fontFamily="Inter, system-ui, sans-serif"
+                fill={palette.ink2}
+              />
+            );
+          }
+          return (
+            <Group key={`l-${i}`}>
+              {line.kind === "device" ? (
+                <Circle
+                  x={padding + 6}
+                  y={ly + 6}
+                  radius={5}
+                  fill={palette.bgInner}
+                  stroke={line.color}
+                  strokeWidth={0.6}
+                />
+              ) : (
+                <>
+                  <Rect
+                    x={padding + 1}
+                    y={ly + 1}
+                    width={10}
+                    height={10}
+                    cornerRadius={2}
+                    fill={DROP_PLATE_COLORS.plate}
+                    stroke={DROP_PLATE_COLORS.stroke}
+                    strokeWidth={0.7}
+                  />
+                  <Circle
+                    x={padding + 6}
+                    y={ly + 6}
+                    radius={1.3}
+                    fill={DROP_PLATE_COLORS.jack}
+                  />
+                </>
+              )}
+              <Text
+                text={line.label}
+                x={padding + 16}
+                y={ly + 1}
+                width={w - padding * 2 - 16 - 24}
                 fontSize={8}
                 fontFamily="Inter, system-ui, sans-serif"
                 fill={palette.ink}
@@ -752,7 +788,7 @@ function LegendGhost({
                 wrap="none"
               />
               <Text
-                text={String(e.qty)}
+                text={String(line.qty)}
                 x={w - padding - 18}
                 y={ly}
                 width={18}
@@ -765,18 +801,6 @@ function LegendGhost({
             </Group>
           );
         })}
-        {overflow > 0 && (
-          <Text
-            text={`+ ${overflow} more`}
-            x={padding}
-            y={h - padding - 10}
-            width={w - padding * 2}
-            fontSize={8}
-            fontStyle="600"
-            fontFamily="Inter, system-ui, sans-serif"
-            fill={palette.ink2}
-          />
-        )}
       </Group>
       {selected && interactive && (
         <Transformer

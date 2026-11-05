@@ -629,12 +629,20 @@ async function drawCoverPage(
     const racksCount = project.racks?.length ?? 0;
     const totalDevices = bid.devices.reduce((s, d) => s + d.qty, 0);
     const totalFeet = bid.cables.reduce((s, c) => s + c.totalFeet, 0);
-    // Distribute 4 facts evenly across the inner width — each cell has
-    // a small uppercase label above a 14pt value.
+    // Documentation-only drop count (Patch 15) — never in the bid. Only
+    // shown when the project actually has drops.
+    const dropCount = project.sheets.reduce(
+      (sum, s) => sum + s.markups.filter((m) => m.kind === "drop").length,
+      0,
+    );
+    // Distribute the facts evenly across the inner width — each cell has
+    // a small uppercase label above a 14pt value. DROPS slots in before
+    // the trailing RACKS/EST. TOTAL fact, and colW self-adjusts.
     const facts = [
       { label: "SHEETS", value: String(project.sheets.length) },
       { label: "DEVICES", value: String(totalDevices) },
       { label: "CABLE FEET", value: totalFeet.toFixed(0) },
+      ...(dropCount > 0 ? [{ label: "DROPS", value: String(dropCount) }] : []),
       racksCount > 0
         ? { label: "RACKS", value: String(racksCount) }
         : { label: "EST. TOTAL", value: usd(bid.totals.grandTotal) },
