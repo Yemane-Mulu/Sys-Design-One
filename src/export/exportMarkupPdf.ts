@@ -1,5 +1,6 @@
 import { PDFDocument, PDFImage, PDFPage, PDFFont, rgb, degrees } from "pdf-lib";
-import { isMarkupLayerVisible } from "../store/projectStore";
+import { isMarkupLayerVisible, useProjectStore } from "../store/projectStore";
+import { getCachedDoc, renderPageToCanvas } from "../lib/pdfjs";
 import type {
   Project,
   Sheet,
@@ -123,6 +124,19 @@ export async function exportMarkupPdf(project: Project) {
   const fonts = await loadBrandFonts(out);
   const branding = resolveBranding(project.branding);
   const logoImage = await maybeEmbedLogo(out, branding.logoDataUrl);
+  // Surface export problems to the user, not just the dev console. The
+  // per-sheet try/catch below keeps one bad sheet from killing the whole
+  // export, but until now the only signal was a console.error most users
+  // never see — which is how "my floor plan is missing" went unnoticed.
+  const pushToast = useProjectStore.getState().pushToast;
+  const reportSheetProblem = (sheetName: string, what: string, e: unknown) => {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[export] ${what} on sheet "${sheetName}":`, e);
+    pushToast(
+      "error",
+      `Export: ${what} on "${sheetName}" — ${msg.slice(0, 140)}`,
+    );
+  };
   // Standalone pages (cover + BOM) don't have a host PDF underneath, so
   // there's no sampled background to use for `auto` resolution. They
   // simply honor an explicit `light` / `dark` setting and otherwise fall
@@ -156,15 +170,30 @@ export async function exportMarkupPdf(project: Project) {
         const bytes = sheet.source?.kind === "pdf" ? sheet.source.bytes : sheet.pdfBytes;
         if (!bytes) {
           console.warn(`[export] skipping sheet "${sheet.name}" — no PDF bytes`);
+          pushToast(
+            "error",
+            `Export: sheet "${sheet.name}" has no PDF data — it exported as a blank page.`,
+          );
           continue;
         }
-        const src = await PDFDocument.load(bytes);
-        const srcPage = src.getPages()[0];
-        const rotation = normalizeRotation(srcPage.getRotation().angle);
-        if (rotation === 0) {
-          const [copied] = await out.copyPages(src, [0]);
-          out.addPage(copied);
-        } else {
+        // Try the lossless vector copy first (crisp at any zoom). Some
+        // CAD-produced sheets (Bluebeam, AutoCAD, Revit) use structures
+        // pdf-lib can't re-embed — object streams, unusual /Rotate
+        // flags, huge media boxes — and copyPages throws. When that
+        // happens we fall back to rasterizing the page with pdf.js and
+        // embedding it as a full-page image, so the floor plan always
+        // makes it into the deliverable instead of silently exporting
+        // as a blank page.
+        let vectorCopied = false;
+        try {
+          const src = await PDFDocument.load(bytes);
+          const srcPage = src.getPages()[0];
+          const rotation = normalizeRotation(srcPage.getRotation().angle);
+          if (rotation === 0) {
+            const [copied] = await out.copyPages(src, [0]);
+            out.addPage(copied);
+            vectorCopied = true;
+          } else {
           // The source page carries a /Rotate flag (common for sheets
           // exported/scanned with a portrait MediaBox that's displayed
           // landscape via rotation). pdf-lib's drawing primitives ignore
@@ -190,10 +219,24 @@ export async function exportMarkupPdf(project: Project) {
           );
           const rotatedPage = out.addPage([sheet.pageWidth, sheet.pageHeight]);
           rotatedPage.drawPage(embedded, { x: 0, y: 0 });
+          vectorCopied = true;
         }
-      } else {
-        // Blank page sized to the sheet — markups + title block draw
-        // over white. Catches DXF / SVG / raster / IFC / missing source.
+        } catch (vectorErr) {
+          // Vector re-embed failed — rasterize the source page instead.
+          console.warn(
+            `[export] vector page copy failed on sheet "${sheet.name}", falling back to raster:`,
+            vectorErr,
+          );
+          await embedSourcePageAsRaster(out, sheet, bytes);
+          pushToast(
+            "info",
+            `Export: "${sheet.name}" was embedded as a raster image (vector copy not possible for this PDF).`,
+          );
+        }
+      }
+      // Non-PDF sources (DXF / SVG / raster / IFC / missing) get a blank
+      // page sized to the sheet — markups + title block draw over white.
+      if (sourceKind !== "pdf") {
         out.addPage([sheet.pageWidth, sheet.pageHeight]);
       }
       const page = out.getPage(out.getPageCount() - 1);
@@ -220,7 +263,7 @@ export async function exportMarkupPdf(project: Project) {
           project.connections,
         );
       } catch (e) {
-        console.error(`[export] markup draw failed on sheet "${sheet.name}":`, e);
+        reportSheetProblem(sheet.name, "markup draw failed", e);
       }
       // 3. Title block — at the user's chosen rect (sheet.titleBlockBounds)
       //    or the default bottom-right placement when they haven't moved
@@ -242,7 +285,7 @@ export async function exportMarkupPdf(project: Project) {
           logoImage,
         });
       } catch (e) {
-        console.error(`[export] title block failed on sheet "${sheet.name}":`, e);
+        reportSheetProblem(sheet.name, "title block failed", e);
       }
       // 4. Device legend — at the user's chosen rect, or default top-right.
       const lgApp = sheet.legendBounds ?? defaultLegendBounds(sheet);
@@ -256,11 +299,11 @@ export async function exportMarkupPdf(project: Project) {
           branding,
         });
       } catch (e) {
-        console.error(`[export] legend failed on sheet "${sheet.name}":`, e);
+        reportSheetProblem(sheet.name, "legend failed", e);
       }
       appendedSheetCount++;
     } catch (e) {
-      console.error(`[export] could not append sheet "${sheet.name}":`, e);
+      reportSheetProblem(sheet.name, "could not append sheet", e);
     }
   }
 
@@ -275,7 +318,9 @@ export async function exportMarkupPdf(project: Project) {
   try {
     drawBomPage(out, fonts, project, branding, logoImage, standaloneTheme);
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     console.error("[export] BOM page failed:", e);
+    pushToast("error", `Export: BOM page failed — ${msg.slice(0, 140)}`);
   }
 
   const bytes = await out.save();
@@ -714,6 +759,41 @@ export function rotationCompensationMatrix(
     default:
       return [1, 0, 0, 1, 0, 0];
   }
+}
+
+/**
+ * Raster fallback for sheets whose source PDF page can't be re-embedded
+ * as a vector (pdf-lib `copyPages` / `embedPage` throws on some
+ * CAD-produced files). Renders page 1 with pdf.js — the same renderer
+ * the editor canvas uses, so the output matches what the user sees —
+ * and embeds the pixels as a full-page JPEG sized to the sheet's
+ * pageWidth/pageHeight, which is the coordinate frame every markup on
+ * the sheet was authored in. Rotation is baked in by pdf.js's viewport,
+ * so the result is always upright.
+ */
+async function embedSourcePageAsRaster(
+  out: PDFDocument,
+  sheet: Sheet,
+  bytes: Uint8Array,
+): Promise<void> {
+  const doc = await getCachedDoc(bytes);
+  const srcPage = await doc.getPage(1);
+  // ~2pt-per-pixel target keeps linework legible without blowing up the
+  // file size; renderPageToCanvas caps the actual scale to stay under
+  // the browser canvas-area limit (14 MP) on huge sheets.
+  const { canvas } = await renderPageToCanvas(srcPage, 2);
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+  const jpgBytes = Uint8Array.from(atob(dataUrl.split(",")[1]), (c) =>
+    c.charCodeAt(0),
+  );
+  const img = await out.embedJpg(jpgBytes);
+  const page = out.addPage([sheet.pageWidth, sheet.pageHeight]);
+  page.drawImage(img, {
+    x: 0,
+    y: 0,
+    width: sheet.pageWidth,
+    height: sheet.pageHeight,
+  });
 }
 
 // ───────────── Masks (cover-ups) ─────────────
