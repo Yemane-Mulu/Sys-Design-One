@@ -216,49 +216,57 @@ export async function exportMarkupPdf(project: Project) {
           const src = await PDFDocument.load(bytes);
           const srcPage = src.getPages()[0];
           const rotation = normalizeRotation(srcPage.getRotation().angle);
+          const rawW = srcPage.getWidth();
+          const rawH = srcPage.getHeight();
+          // The visible box's lower-left corner. The editor (pdf.js)
+          // anchors markups to it, but a copied page keeps the source
+          // box — most PDFs start at (0,0), while CAD/PDFium sheets can
+          // be centered, e.g. [-1512 -1080 1512 1080]. Without the
+          // compensation below, every markup lands shifted by
+          // (-box.x, -box.y) and most fall off the sheet.
+          const box = srcPage.getCropBox();
+          const matrix = embedCompensationMatrix(
+            rotation,
+            rawW,
+            rawH,
+            box.x,
+            box.y,
+          );
+          const hasOffset = box.x !== 0 || box.y !== 0;
           if (side) {
             // Side mode cannot widen a copied page (copyPages keeps the
             // source MediaBox). Embed the source page — rotation baked in
             // exactly like the rotated branch — onto a fresh, widened page
             // so the legend strip has somewhere to live.
-            const rawW = srcPage.getWidth();
-            const rawH = srcPage.getHeight();
-            const embedded = await out.embedPage(
-              srcPage,
-              undefined,
-              rotationCompensationMatrix(rotation, rawW, rawH),
-            );
+            const embedded = await out.embedPage(srcPage, undefined, matrix);
             const sidePage = out.addPage([pageW, pageH]);
             sidePage.drawPage(embedded, { x: 0, y: 0 });
-          } else if (rotation === 0) {
+          } else if (rotation === 0 && !hasOffset) {
             const [copied] = await out.copyPages(src, [0]);
             out.addPage(copied);
           } else {
           // The source page carries a /Rotate flag (common for sheets
           // exported/scanned with a portrait MediaBox that's displayed
-          // landscape via rotation). pdf-lib's drawing primitives ignore
-          // /Rotate and place content in the page's *unrotated* default
-          // space, so naively copying the page and then drawing markups
-          // at sheet.pageWidth/pageHeight (the rotation-aware "visual"
+          // landscape via rotation) or a visible box that doesn't start
+          // at (0,0) (common for CAD/PDFium sheets with a centered box).
+          // pdf-lib's drawing primitives ignore /Rotate and place content
+          // in the page's *unrotated* default space, so naively copying
+          // the page and then drawing markups at
+          // sheet.pageWidth/pageHeight (the rotation-aware "visual"
           // dimensions pdf.js reports, which is the coordinate frame
           // every markup on this sheet was authored in) puts the two
           // layers in different frames: the plan renders upright
           // (its own content stream already accounts for /Rotate) while
           // everything we draw on top comes out rotated 90/270°
-          // relative to it. Fix: bake the rotation into the embedded
-          // page via a transformation matrix and place it on a fresh,
-          // unrotated page sized to the visual dimensions, so the
+          // relative to it — and, for an offset box, shifted by the box
+          // origin. Fix: bake the rotation and the box offset into the
+          // embedded page via a transformation matrix and place it on a
+          // fresh, unrotated page sized to the visual dimensions, so the
           // source art and our overlay finally share one coordinate
           // frame.
-          const rawW = srcPage.getWidth();
-          const rawH = srcPage.getHeight();
-          const embedded = await out.embedPage(
-            srcPage,
-            undefined,
-            rotationCompensationMatrix(rotation, rawW, rawH),
-          );
-          const rotatedPage = out.addPage([sheet.pageWidth, sheet.pageHeight]);
-          rotatedPage.drawPage(embedded, { x: 0, y: 0 });
+          const embedded = await out.embedPage(srcPage, undefined, matrix);
+          const framedPage = out.addPage([sheet.pageWidth, sheet.pageHeight]);
+          framedPage.drawPage(embedded, { x: 0, y: 0 });
         }
         } catch (vectorErr) {
           // Vector re-embed failed — rasterize the source page instead.
@@ -831,6 +839,47 @@ export function rotationCompensationMatrix(
     default:
       return [1, 0, 0, 1, 0, 0];
   }
+}
+
+/**
+ * Combined embed matrix for a source page: first translate the page's
+ * visible box so its lower-left corner lands on the origin, then apply
+ * the /Rotate compensation. `boxX`/`boxY` are the visible box's
+ * lower-left corner in the page's raw user space (pdf-lib
+ * `getCropBox()`, which falls back to the MediaBox).
+ *
+ * Why the translation matters: the editor authors every markup in the
+ * pdf.js viewport frame, whose origin is the visible box's top-left
+ * corner, and the export draws markups in that same frame flipped to
+ * PDF-up — i.e. it assumes the page's (0,0) is its bottom-left corner.
+ * Most PDFs start their box at (0,0) and the translation is a no-op.
+ * But CAD/PDFium sheets can carry a centered box, e.g.
+ * [-1512 -1080 1512 1080]: a vector-copied page keeps that box, so
+ * without the translation every markup lands shifted by (-boxX, -boxY)
+ * — half a page right and half a page up for a centered box — and most
+ * markups fall off the sheet entirely. Translating the embedded
+ * background by (-boxX, -boxY) puts it in the same (0,0)-origin frame
+ * the markups use.
+ */
+export function embedCompensationMatrix(
+  rotation: 0 | 90 | 180 | 270,
+  w: number,
+  h: number,
+  boxX: number,
+  boxY: number,
+): [number, number, number, number, number, number] {
+  const [a, b, c, d, e, f] = rotationCompensationMatrix(rotation, w, h);
+  // Translate first, then rotate (M = T · R in pdf-lib's
+  // [a b c d e f] convention, where a point maps to
+  // x' = a·x + c·y + e, y' = b·x + d·y + f).
+  return [
+    a,
+    b,
+    c,
+    d,
+    -boxX * a - boxY * c + e,
+    -boxX * b - boxY * d + f,
+  ];
 }
 
 /**

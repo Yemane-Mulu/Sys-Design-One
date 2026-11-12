@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
+  embedCompensationMatrix,
   normalizeRotation,
   rotationCompensationMatrix,
 } from "../src/export/exportMarkupPdf";
@@ -104,4 +105,65 @@ describe("rotationCompensationMatrix", () => {
     expect(Math.min(...ys)).toBeCloseTo(0, 6);
     expect(Math.max(...ys)).toBeCloseTo(h, 6);
   });
+});
+
+describe("embedCompensationMatrix", () => {
+  // The reported case: a PDFium floor-plan sheet whose MediaBox is
+  // centered, [-1512.12 -1080 1512.12 1080], so the page is
+  // 3024.24 x 2160 with its (0,0) at the center. Without the offset
+  // compensation every markup landed shifted half a page right and
+  // half a page up, and 45 of 51 drops fell off the sheet.
+  const w = 3024.24;
+  const h = 2160;
+  const boxX = -1512.12;
+  const boxY = -1080;
+  const boxCorners = [
+    { x: boxX, y: boxY },
+    { x: boxX + w, y: boxY },
+    { x: boxX, y: boxY + h },
+    { x: boxX + w, y: boxY + h },
+  ];
+
+  it("is the identity for an unrotated page whose box starts at (0,0)", () => {
+    expect(embedCompensationMatrix(0, w, h, 0, 0)).toEqual(
+      rotationCompensationMatrix(0, w, h),
+    );
+  });
+
+  it("translates a centered box onto the (0,0)-origin frame for rotation 0", () => {
+    const m = embedCompensationMatrix(0, w, h, boxX, boxY);
+    expect(m[0]).toBeCloseTo(1, 6);
+    expect(m[1]).toBeCloseTo(0, 6);
+    expect(m[2]).toBeCloseTo(0, 6);
+    expect(m[3]).toBeCloseTo(1, 6);
+    expect(m[4]).toBeCloseTo(1512.12, 6);
+    expect(m[5]).toBeCloseTo(1080, 6);
+    const mapped = boxCorners.map((c) => apply(m, c.x, c.y));
+    const xs = mapped.map((p) => p.x);
+    const ys = mapped.map((p) => p.y);
+    expect(Math.min(...xs)).toBeCloseTo(0, 6);
+    expect(Math.max(...xs)).toBeCloseTo(w, 6);
+    expect(Math.min(...ys)).toBeCloseTo(0, 6);
+    expect(Math.max(...ys)).toBeCloseTo(h, 6);
+  });
+
+  for (const rotation of [90, 180, 270] as const) {
+    it(`maps the offset box corners to the reference rotation for ${rotation}°`, () => {
+      const m = embedCompensationMatrix(rotation, w, h, boxX, boxY);
+      for (const corner of boxCorners) {
+        const actual = apply(m, corner.x, corner.y);
+        // Independent reference: translate the corner into the
+        // (0,0)-origin frame first, then rotate about the center.
+        const expected = referenceRotate(
+          rotation,
+          w,
+          h,
+          corner.x - boxX,
+          corner.y - boxY,
+        );
+        expect(actual.x).toBeCloseTo(expected.x, 6);
+        expect(actual.y).toBeCloseTo(expected.y, 6);
+      }
+    });
+  }
 });
