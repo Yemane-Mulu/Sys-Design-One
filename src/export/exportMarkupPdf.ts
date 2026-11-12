@@ -233,12 +233,24 @@ export async function exportMarkupPdf(project: Project) {
             box.y,
           );
           const hasOffset = box.x !== 0 || box.y !== 0;
+          // Pass the real box to embedPage: when the bounding box is
+          // omitted, pdf-lib re-anchors it at (0,0) (fullPageBoundingBox
+          // in PDFPageEmbedder), so an offset box gets clipped to its
+          // (0,0)-anchored quadrant — the plan would render as a quarter
+          // page in the top-right corner while the markups sit at their
+          // full-page positions.
+          const embedBox = {
+            left: box.x,
+            bottom: box.y,
+            right: box.x + box.width,
+            top: box.y + box.height,
+          };
           if (side) {
             // Side mode cannot widen a copied page (copyPages keeps the
             // source MediaBox). Embed the source page — rotation baked in
             // exactly like the rotated branch — onto a fresh, widened page
             // so the legend strip has somewhere to live.
-            const embedded = await out.embedPage(srcPage, undefined, matrix);
+            const embedded = await out.embedPage(srcPage, embedBox, matrix);
             const sidePage = out.addPage([pageW, pageH]);
             sidePage.drawPage(embedded, { x: 0, y: 0 });
           } else if (rotation === 0 && !hasOffset) {
@@ -264,7 +276,7 @@ export async function exportMarkupPdf(project: Project) {
           // fresh, unrotated page sized to the visual dimensions, so the
           // source art and our overlay finally share one coordinate
           // frame.
-          const embedded = await out.embedPage(srcPage, undefined, matrix);
+          const embedded = await out.embedPage(srcPage, embedBox, matrix);
           const framedPage = out.addPage([sheet.pageWidth, sheet.pageHeight]);
           framedPage.drawPage(embedded, { x: 0, y: 0 });
         }
