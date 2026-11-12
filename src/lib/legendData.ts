@@ -45,6 +45,7 @@ export const DROP_SERVICE_LABELS: Record<DropService, string> = {
   voice: "Phone",
   coax: "Coax",
   fiber: "Fiber",
+  camera: "Camera",
 };
 
 /** Legend group label for one drop: jack type wins, then service, else the

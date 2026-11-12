@@ -264,7 +264,7 @@ const DROP_FIELDS: FieldDef[] = [
   { path: "faceplateId", label: "Faceplate", type: "string", help: "Grouping id — drops sharing it sit on one faceplate" },
   { path: "faceplateJackCount", label: "Jacks on Plate", type: "number", help: "How many jacks share this drop's faceplate (1–6)" },
   { path: "jackType", label: "Jack Type", type: "string", help: "Outlet type, e.g. Cat6 keystone" },
-  { path: "service", label: "Service", type: "enum", enumValues: ["data", "poe", "voice", "coax", "fiber"] },
+  { path: "service", label: "Service", type: "enum", enumValues: ["data", "poe", "voice", "coax", "fiber", "camera"] },
   { path: "mount", label: "Mount", type: "enum", enumValues: ["wall", "floor", "ceiling", "pole", "box"] },
   { path: "heightInches", label: "Height (AFF in)", type: "number", help: "Install height above finished floor, inches" },
   { path: "notes", label: "Notes", type: "string" },

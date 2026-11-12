@@ -855,7 +855,7 @@ export interface FreehandMarkup extends BaseMarkup {
 }
 
 /** Service carried on a drop jack. */
-export type DropService = "data" | "poe" | "voice" | "coax" | "fiber";
+export type DropService = "data" | "poe" | "voice" | "coax" | "fiber" | "camera";
 
 /** Where a drop faceplate is mounted. */
 export type DropMount = "wall" | "floor" | "ceiling" | "pole" | "box";

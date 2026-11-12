@@ -1764,7 +1764,7 @@ function PositionFields({ markup, onChange }: any) {
 
 // ───── Drops (documentation-only markup) ─────
 
-const DROP_SERVICE_OPTIONS = ["data", "poe", "voice", "coax", "fiber"] as const;
+const DROP_SERVICE_OPTIONS = ["data", "poe", "voice", "coax", "fiber", "camera"] as const;
 const DROP_MOUNT_OPTIONS = ["wall", "floor", "ceiling", "pole", "box"] as const;
 
 /** Per-jack field editor. One drop = one jack; every field is

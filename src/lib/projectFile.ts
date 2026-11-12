@@ -91,7 +91,7 @@ const allowedMarkupKindSet = new Set<string>(ALLOWED_MARKUP_KINDS);
 /** Drop jack services and mounts — mirrors the DropService / DropMount
  *  unions in src/store/projectStore.ts. Validated on import so a
  *  malformed file cannot smuggle an unknown enum value into the UI. */
-const DROP_SERVICES = new Set(["data", "poe", "voice", "coax", "fiber"]);
+const DROP_SERVICES = new Set(["data", "poe", "voice", "coax", "fiber", "camera"]);
 const DROP_MOUNTS = new Set(["wall", "floor", "ceiling", "pole", "box"]);
 
 /** Legend / title-block placement per sheet (Patch 19/20) — mirrors the
