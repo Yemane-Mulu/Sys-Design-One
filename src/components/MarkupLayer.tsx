@@ -91,9 +91,10 @@ const VALIDATION_RED = "#EF4444";
 /** Stage pixels before Konva starts a drag — avoids click-vs-drag races. */
 const MARKUP_DRAG_DISTANCE = 3;
 
-/** Jack-dot layout on a drop faceplate, keyed by jack count (1–6).
- *  Coordinates are in PDF user units relative to the plate center —
- *  amber dots on the midnight plate, mirroring how a wall plate reads. */
+/** Jack layout on a drop faceplate, keyed by jack count (1–6).
+ *  Coordinates are in 13pt-plate units relative to the plate center
+ *  and scale with the plate at draw time — amber squares on the
+ *  midnight plate, mirroring how a wall plate reads. */
 const DROP_JACK_DOTS: Record<number, Array<[number, number]>> = {
   1: [[0, 0]],
   2: [
@@ -2131,10 +2132,15 @@ function renderMarkup(
         jackCount === 1
           ? faceplate[0].number
           : `${faceplate[0].number}–${faceplate[jackCount - 1].number} ×${jackCount}`;
-      const plateEdge = 13;
+      const isCamera = faceplate[0]?.service === "camera";
+      const plateEdge = 26;
       const half = plateEdge / 2;
       const accent = "#4FB7FF";
       const plateStroke = selected ? "#F4B740" : hovered ? "#9BD1FF" : accent;
+      // Jack squares at the DROP_JACK_DOTS offsets, scaled from the old
+      // 13pt plate so the layout keeps its proportions.
+      const jackScale = plateEdge / 13;
+      const jackEdge = 4.5;
       const dots =
         DROP_JACK_DOTS[Math.min(6, Math.max(1, jackCount))] ?? DROP_JACK_DOTS[1];
 
@@ -2163,9 +2169,11 @@ function renderMarkup(
               onMouseEnter={(e) => {
                 showHoverHint({
                   text: draggable
-                    ? jackCount > 1
-                      ? `move ${jackCount}-jack plate`
-                      : "move drop"
+                    ? isCamera
+                      ? "move camera"
+                      : jackCount > 1
+                        ? `move ${jackCount}-jack plate`
+                        : "move drop"
                     : "select drop",
                   x: m.x + half + 6,
                   y: m.y - half - 5,
@@ -2197,7 +2205,7 @@ function renderMarkup(
                 y={-half}
                 width={plateEdge}
                 height={plateEdge}
-                cornerRadius={2.2}
+                cornerRadius={4.4}
                 fill="#0B1220"
                 stroke={plateStroke}
                 strokeWidth={selected ? 1.2 : 0.85}
@@ -2206,18 +2214,54 @@ function renderMarkup(
                 shadowColor={!selected && hovered ? accent : undefined}
                 shadowBlur={!selected && hovered ? 5 : 0}
                 shadowOpacity={!selected && hovered ? HOVER_SHADOW_OPACITY : 0}
+                visible={!isCamera}
               />
-              {dots.map(([dx, dy], index) => (
-                <Circle
-                  key={index}
-                  x={dx}
-                  y={dy}
-                  radius={1.15}
-                  fill="#F4B740"
-                  perfectDrawEnabled={false}
-                  listening={false}
-                />
-              ))}
+              {isCamera ? (
+                <>
+                  <Circle
+                    x={0}
+                    y={0}
+                    radius={11}
+                    fill="#0B1220"
+                    stroke={plateStroke}
+                    strokeWidth={selected ? 1.8 : 1.5}
+                    perfectDrawEnabled={false}
+                    listening={false}
+                    shadowColor={!selected && hovered ? accent : undefined}
+                    shadowBlur={!selected && hovered ? 5 : 0}
+                    shadowOpacity={!selected && hovered ? HOVER_SHADOW_OPACITY : 0}
+                  />
+                  <Circle
+                    x={0}
+                    y={0}
+                    radius={4.5}
+                    fill="#F5F7FA"
+                    perfectDrawEnabled={false}
+                    listening={false}
+                  />
+                  <Circle
+                    x={0}
+                    y={0}
+                    radius={2}
+                    fill="#0B1220"
+                    perfectDrawEnabled={false}
+                    listening={false}
+                  />
+                </>
+              ) : (
+                dots.map(([dx, dy], index) => (
+                  <Rect
+                    key={index}
+                    x={dx * jackScale - jackEdge / 2}
+                    y={dy * jackScale - jackEdge / 2}
+                    width={jackEdge}
+                    height={jackEdge}
+                    fill="#F4B740"
+                    perfectDrawEnabled={false}
+                    listening={false}
+                  />
+                ))
+              )}
             </Group>
           )}
           <Group

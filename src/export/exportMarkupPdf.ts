@@ -29,6 +29,7 @@ import {
 } from "../lib/sheetAnalysis";
 import {
   buildLegendData,
+  dropGroupLabel,
   sideLegendBounds,
   sideTitleBlockBounds,
   LEGEND_STRIP_WIDTH,
@@ -80,7 +81,8 @@ import {
   scheduleRowsForDisplay,
 } from "../lib/scheduleBlocks";
 
-/** Jack-dot layout on a drop faceplate, by jack count (1–6). Mirrors
+/** Jack layout on a drop faceplate, by jack count (1–6). Offsets are in
+ *  13pt-plate units and scale with the plate at draw time. Mirrors
  *  DROP_JACK_DOTS in MarkupLayer.tsx — keep the two tables in sync so
  *  the export prints the plate exactly as the canvas draws it. */
 const DROP_JACK_DOTS: Record<number, Array<[number, number]>> = {
@@ -691,20 +693,32 @@ async function drawCoverPage(
     const racksCount = project.racks?.length ?? 0;
     const totalDevices = bid.devices.reduce((s, d) => s + d.qty, 0);
     const totalFeet = bid.cables.reduce((s, c) => s + c.totalFeet, 0);
-    // Documentation-only drop count (Patch 15) — never in the bid. Only
-    // shown when the project actually has drops.
-    const dropCount = project.sheets.reduce(
-      (sum, s) => sum + s.markups.filter((m) => m.kind === "drop").length,
-      0,
-    );
+    // Documentation-only drop counts (Patch 15) — never in the bid.
+    // Broken down by type with the same grouping the legend uses
+    // (dropGroupLabel: jack type wins, then service), biggest group
+    // first, so the cover and the legend always agree. Only shown when
+    // the project actually has drops.
+    const dropGroups = new Map<string, number>();
+    for (const s of project.sheets) {
+      for (const m of s.markups) {
+        if (m.kind === "drop") {
+          const key = dropGroupLabel(m);
+          dropGroups.set(key, (dropGroups.get(key) ?? 0) + 1);
+        }
+      }
+    }
+    const dropFacts = [...dropGroups.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, qty]) => ({ label: label.toUpperCase(), value: String(qty) }));
     // Distribute the facts evenly across the inner width — each cell has
-    // a small uppercase label above a 14pt value. DROPS slots in before
-    // the trailing RACKS/EST. TOTAL fact, and colW self-adjusts.
+    // a small uppercase label above a 14pt value. The drop breakdown
+    // slots in before the trailing RACKS/EST. TOTAL fact, and colW
+    // self-adjusts.
     const facts = [
       { label: "SHEETS", value: String(project.sheets.length) },
       { label: "DEVICES", value: String(totalDevices) },
       { label: "CABLE FEET", value: totalFeet.toFixed(0) },
-      ...(dropCount > 0 ? [{ label: "DROPS", value: String(dropCount) }] : []),
+      ...dropFacts,
       racksCount > 0
         ? { label: "RACKS", value: String(racksCount) }
         : { label: "EST. TOTAL", value: usd(bid.totals.grandTotal) },
@@ -2351,9 +2365,11 @@ function drawSingleMarkup(
 
   if (m.kind === "drop") {
     // Documentation-only network drop. The faceplate renders once: the
-    // first member in drop-number order draws plate + label pill,
-    // mirroring the canvas node (plate edge, amber jack dots, blue
-    // stroke, mono pill with the number range).
+    // first member in drop-number order draws the icon + label pill,
+    // mirroring the canvas node. Data drops draw a 26pt plate (2x the
+    // old 13pt one, so it reads on a printed plan) with one amber jack
+    // square per jack; drops with service "camera" draw a dome-camera
+    // glyph instead of a plate. The mono pill carries the number range.
     if (deviceRenderPart === "tag") return;
     const faceplate = sheet.markups
       .filter(
@@ -2366,37 +2382,64 @@ function drawSingleMarkup(
       jackCount === 1
         ? faceplate[0].number
         : `${faceplate[0].number}–${faceplate[jackCount - 1].number} ×${jackCount}`;
-    const plateEdge = 13;
+    const isCamera = faceplate[0]?.service === "camera";
+    const plateEdge = 26;
     const half = plateEdge / 2;
-    const cornerR = 2.2;
+    const cornerR = 4.4;
     const cx = m.x;
     const cy = py(m.y);
     const accent = hex("#4FB7FF");
-    const straight = plateEdge - cornerR * 2;
-    page.drawSvgPath(
-      `M ${cx - half + cornerR} ${cy - half} h ${straight} ` +
-        `a ${cornerR} ${cornerR} 0 0 1 ${cornerR} ${cornerR} v ${straight} ` +
-        `a ${cornerR} ${cornerR} 0 0 1 ${-cornerR} ${cornerR} h ${-straight} ` +
-        `a ${cornerR} ${cornerR} 0 0 1 ${-cornerR} ${-cornerR} v ${-straight} ` +
-        `a ${cornerR} ${cornerR} 0 0 1 ${cornerR} ${-cornerR} z`,
-      {
-        x: 0,
-        y: 0,
-        scale: 1,
+    if (isCamera) {
+      // Dome camera: dark disc, blue rim, light lens with a dark pupil.
+      page.drawCircle({
+        x: cx,
+        y: cy,
+        size: 11,
         color: hex("#0B1220"),
         borderColor: accent,
-        borderWidth: 0.85,
-      },
-    );
-    const dots =
-      DROP_JACK_DOTS[Math.min(6, Math.max(1, jackCount))] ?? DROP_JACK_DOTS[1];
-    for (const [dx, dy] of dots) {
-      page.drawCircle({
-        x: cx + dx,
-        y: cy - dy,
-        size: 1.15,
-        color: hex("#F4B740"),
+        borderWidth: 1.5,
       });
+      page.drawCircle({ x: cx, y: cy, size: 4.5, color: hex("#F5F7FA") });
+      page.drawCircle({ x: cx, y: cy, size: 2, color: hex("#0B1220") });
+    } else {
+      const straight = plateEdge - cornerR * 2;
+      // Rounded-rect path built in app-space (y-down, same as m.x/m.y)
+      // with y: sheet.pageHeight so drawSvgPath flips it once into PDF
+      // space — the house pattern (see drawCoverageForDevice). The old
+      // code built this path in PDF coords with y: 0, so the flip
+      // pushed the plate off-page: the plate NEVER rendered in any
+      // export, only the dots and the pill did.
+      page.drawSvgPath(
+        `M ${cx - half + cornerR} ${m.y - half} h ${straight} ` +
+          `a ${cornerR} ${cornerR} 0 0 1 ${cornerR} ${cornerR} v ${straight} ` +
+          `a ${cornerR} ${cornerR} 0 0 1 ${-cornerR} ${cornerR} h ${-straight} ` +
+          `a ${cornerR} ${cornerR} 0 0 1 ${-cornerR} ${-cornerR} v ${-straight} ` +
+          `a ${cornerR} ${cornerR} 0 0 1 ${cornerR} ${-cornerR} z`,
+        {
+          x: 0,
+          y: sheet.pageHeight,
+          scale: 1,
+          color: hex("#0B1220"),
+          borderColor: accent,
+          borderWidth: 0.85,
+        },
+      );
+      // Jack squares at the DROP_JACK_DOTS offsets, scaled from the old
+      // 13pt plate to this one so the layout keeps its proportions.
+      const jackScale = plateEdge / 13;
+      const jackEdge = 4.5;
+      const jackHalf = jackEdge / 2;
+      const dots =
+        DROP_JACK_DOTS[Math.min(6, Math.max(1, jackCount))] ?? DROP_JACK_DOTS[1];
+      for (const [dx, dy] of dots) {
+        page.drawRectangle({
+          x: cx + dx * jackScale - jackHalf,
+          y: cy - dy * jackScale - jackHalf,
+          width: jackEdge,
+          height: jackEdge,
+          color: hex("#F4B740"),
+        });
+      }
     }
     // Label pill — the device-tag pattern: label offsets are PDF points
     // from the plate center, defaulting to the plate's lower-right.
