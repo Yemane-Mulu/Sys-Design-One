@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Wordmark, Monogram } from "../brand/Wordmark";
 import { useProjectStore } from "../store/projectStore";
 import { ingestFile } from "../lib/ingest";
-import { maybeOfferSurveyorImport } from "../lib/systemSurveyor";
+import { uploadSurveyorPdf } from "../lib/systemSurveyor";
 import { SUPPORTED_ACCEPT, SUPPORTED_HINT } from "../lib/sheetSource";
 import { importProjectFile } from "../lib/projectFile";
 import { enqueueIngest } from "../lib/ingestQueue";
@@ -16,6 +16,7 @@ import {
 import {
   Check,
   Copy,
+  FileDown,
   FilePlus2,
   FolderOpen,
   Pencil,
@@ -63,6 +64,17 @@ export function StartScreen() {
     newProject({ projectName: "Untitled Project" });
   };
 
+  // Dedicated System Surveyor import — its own card, no auto-detection
+  // on normal uploads. Starts a project from the report, then reads its
+  // bill of materials (no AI) into drops + a rack plan.
+  const onPickSurveyorFile = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setBusy(true);
+    newProject({ projectName: "New Project" });
+    await uploadSurveyorPdf(files[0]);
+    setBusy(false);
+  };
+
   const onOpenProjectFile = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setBusy(true);
@@ -107,12 +119,6 @@ export function StartScreen() {
                 needsCalibration++;
               }
             }
-            // A client plan from System Surveyor carries a device table —
-            // offer the no-AI import (drops + rack plan) when one is found.
-            void maybeOfferSurveyorImport(
-              file,
-              sheets.map((s) => s.id),
-            );
             importedSheets += sheets.length;
             done++;
             setProgress({ done });
@@ -273,6 +279,24 @@ export function StartScreen() {
               Set up project metadata first, then add sheets as they come in.
             </div>
           </button>
+
+          <label className={`group panel rounded-xl p-6 text-left cursor-pointer transition-all hover:-translate-y-0.5 hover:border-white/20 ${busy ? "opacity-50 pointer-events-none" : ""}`}>
+            <FileDown className="w-6 h-6 text-amber-knox mb-3" />
+            <div className="font-semibold text-ink-50 mb-1">Import System Surveyor PDF</div>
+            <div className="text-sm text-ink-300">
+              Upload a client&apos;s System Surveyor report — drops and a rack
+              plan are read from its bill of materials, no AI.
+            </div>
+            <div className="mt-2 text-[11px] text-ink-400 font-mono leading-snug">
+              PDF report with a Bill of Materials
+            </div>
+            <input
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={(e) => onPickSurveyorFile(e.target.files)}
+            />
+          </label>
 
           <label className={`group panel rounded-xl p-6 text-left cursor-pointer transition-all hover:-translate-y-0.5 hover:border-signal-green/40 col-span-full md:col-span-1 ${busy ? "opacity-50 pointer-events-none" : ""}`}>
             <Share2 className="w-6 h-6 text-signal-green mb-3" />

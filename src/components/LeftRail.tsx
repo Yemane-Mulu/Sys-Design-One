@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useProjectStore, type MarkupKind } from "../store/projectStore";
 import { ingestFile } from "../lib/ingest";
-import { maybeOfferSurveyorImport } from "../lib/systemSurveyor";
+import { uploadSurveyorPdf } from "../lib/systemSurveyor";
 import { SUPPORTED_ACCEPT, SUPPORTED_HINT } from "../lib/sheetSource";
 import { importProjectFile } from "../lib/projectFile";
 import { enqueueIngest } from "../lib/ingestQueue";
@@ -9,6 +9,7 @@ import { renderPageToCanvas, getCachedDoc } from "../lib/pdfjs";
 import { QUALITY_PROFILES } from "../lib/quality";
 import {
   FilePlus,
+  FileDown,
   Layers,
   Lock,
   LockOpen,
@@ -65,12 +66,6 @@ export function LeftRail({ className = "" }: { className?: string }) {
                 needsCalibration++;
               }
             }
-            // A client plan from System Surveyor carries a device table —
-            // offer the no-AI import (drops + rack plan) when one is found.
-            void maybeOfferSurveyorImport(
-              f,
-              sheets.map((s) => s.id),
-            );
             added += sheets.length;
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -98,6 +93,14 @@ export function LeftRail({ className = "" }: { className?: string }) {
     } catch (e) {
       pushToast("error", e instanceof Error ? e.message : "Could not open project file");
     }
+  };
+
+  // Dedicated System Surveyor import — its own button, no auto-detection
+  // on normal uploads. Reads the report's bill of materials (no AI) into
+  // drops + a rack plan.
+  const onPickSurveyorFile = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    await uploadSurveyorPdf(files[0]);
   };
 
   return (
@@ -153,6 +156,19 @@ export function LeftRail({ className = "" }: { className?: string }) {
                 type="file"
                 className="hidden"
                 onChange={(e) => onOpenProjectFile(e.target.files)}
+              />
+            </label>
+            <label
+              className="btn w-full justify-center cursor-pointer"
+              title="Upload a client's System Surveyor PDF report — drops and a rack plan are read from its bill of materials, no AI."
+            >
+              <FileDown className="w-4 h-4" />
+              Import System Surveyor PDF
+              <input
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={(e) => onPickSurveyorFile(e.target.files)}
               />
             </label>
           </div>

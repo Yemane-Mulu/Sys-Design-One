@@ -292,7 +292,7 @@ export function buildSurveyorRackPlacements(plan: RackPlan): RackPlacement[] {
   return placements;
 }
 
-// ───────── Upload hook ─────────
+// ───────── Explicit upload (its own button, no auto-detection) ─────────
 
 export interface SurveyorImportSource {
   bytes: Uint8Array;
@@ -302,31 +302,40 @@ export interface SurveyorImportSource {
 }
 
 /**
- * After a PDF upload, check whether it is a System Surveyor report and,
- * if so, open the import review modal. Fire-and-forget: any failure just
- * means a normal upload. Only the first detected file opens the modal.
+ * Upload a client's System Surveyor PDF from the dedicated import
+ * button: ingest it as sheets, then open the review modal. The user
+ * chose this path, so no detection runs — if the file turns out to have
+ * no device table, the modal says so. Dynamic imports keep this module
+ * importable in non-browser runtimes (tests).
  */
-export async function maybeOfferSurveyorImport(
-  file: File,
-  sheetIds: string[],
-): Promise<void> {
-  if (!/\.pdf$/i.test(file.name)) return;
+export async function uploadSurveyorPdf(file: File): Promise<void> {
   const { useProjectStore } = await import("../store/projectStore");
-  if (useProjectStore.getState().surveyorImport) return;
+  const { ingestFile } = await import("./ingest");
+  const st = useProjectStore.getState();
+  if (!/\.pdf$/i.test(file.name)) {
+    st.pushToast("error", "Pick a PDF report.");
+    return;
+  }
   let bytes: Uint8Array;
   try {
     bytes = new Uint8Array(await file.arrayBuffer());
   } catch {
+    st.pushToast("error", `Could not read ${file.name}.`);
     return;
   }
-  let pages: SurveyorTextLine[][];
+  let sheets: Awaited<ReturnType<typeof ingestFile>>;
   try {
-    // First 5 pages are enough to find the "System Surveyor" marker;
-    // the modal parses the whole file when it opens.
-    pages = await extractSurveyorText(bytes, 5);
-  } catch {
+    sheets = await ingestFile(file);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[surveyor-import]", file.name, e);
+    st.pushToast("error", `${file.name}: ${msg}`);
     return;
   }
-  if (!isSystemSurveyorText(pages)) return;
-  useProjectStore.getState().setSurveyorImport({ bytes, filename: file.name, sheetIds });
+  for (const sheet of sheets) st.addSheet(sheet);
+  st.setSurveyorImport({
+    bytes,
+    filename: file.name,
+    sheetIds: sheets.map((s) => s.id),
+  });
 }
