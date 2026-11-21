@@ -27,7 +27,7 @@ const CATEGORIES: RackCategory[] = [
 ];
 
 export function RackDevicePalette() {
-  const [filter, setFilter] = useState<RackCategory | "all">("all");
+  const [filter, setFilter] = useState<RackCategory | "all" | "defaults">("all");
   const [q, setQ] = useState("");
 
   const showDefaultsSection = filter === "all" && !q;
@@ -35,7 +35,11 @@ export function RackDevicePalette() {
 
   const list = useMemo(() => {
     const base = rackDevices.filter((d) => {
-      if (filter !== "all" && d.category !== filter) return false;
+      if (filter === "defaults") {
+        if (!d.isDefault) return false;
+      } else if (filter !== "all" && d.category !== filter) {
+        return false;
+      }
       if (q) {
         const lower = q.toLowerCase();
         if (
@@ -74,6 +78,9 @@ export function RackDevicePalette() {
       <div className="px-3 py-2 border-b border-white/5 flex flex-wrap gap-1">
         <Pill active={filter === "all"} onClick={() => setFilter("all")}>
           All
+        </Pill>
+        <Pill active={filter === "defaults"} onClick={() => setFilter("defaults")}>
+          Defaults
         </Pill>
         {CATEGORIES.map((c) => (
           <Pill key={c} active={filter === c} onClick={() => setFilter(c)}>
