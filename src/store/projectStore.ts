@@ -929,6 +929,10 @@ export interface DropMarkup extends BaseMarkup {
   jackType?: string;
   /** Service carried on this jack. */
   service?: DropService;
+  /** Device type typed on the Patch Panels tab (e.g. "Inside Cam",
+   *  "POS", "ATM") — free text, grouped case-insensitively in the
+   *  DEVICES BY SWITCH export. */
+  deviceType?: string;
   /** Mount location for the faceplate. */
   mount?: DropMount;
   /** Install height above finished floor, in inches (48 = ADA). */
@@ -1516,6 +1520,11 @@ interface State {
     port: number,
     dropId: string | undefined,
   ) => void;
+  /** Type a device type on a drop ("Inside Cam", "POS", "ATM" —
+   *  free text). Searches every sheet, not just the active one, since
+   *  the Patch Panels tab lists drops from the whole project. Blank
+   *  clears it. */
+  setDropDeviceType: (dropId: string, deviceType: string) => void;
 
   setActiveTool: (t: ToolId) => void;
   setActiveDevice: (id: string | null) => void;
@@ -2782,6 +2791,32 @@ export const useProjectStore = create<State>()(
             }),
             updatedAt: Date.now(),
           },
+        };
+      }),
+
+    setDropDeviceType: (dropId, deviceType) =>
+      set((s) => {
+        if (!s.project) return s;
+        const project = syncRackSystems({
+          ...s.project,
+          sheets: s.project.sheets.map((sh) => ({
+            ...sh,
+            markups: sh.markups.map((m) =>
+              m.id === dropId && m.kind === "drop"
+                ? ({
+                    ...m,
+                    // Stored exactly as typed (a trailing space mid-word
+                    // must survive); grouping normalizes case/spacing.
+                    deviceType: deviceType || undefined,
+                  } as Markup)
+                : m,
+            ),
+          })),
+          updatedAt: Date.now(),
+        });
+        return {
+          history: historyAfterProjectChange(s.history, s.project),
+          project,
         };
       }),
 

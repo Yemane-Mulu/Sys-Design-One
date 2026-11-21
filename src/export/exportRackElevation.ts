@@ -13,6 +13,7 @@ import {
 import { loadBrandFonts, hex, safeText, type BrandFonts } from "./titleBlockRenderer";
 import { resolveBranding, type BrandingConfig } from "../lib/branding";
 import {
+  devicesBySwitchRows,
   occupiedUSlots,
   patchTableRows,
   placementUHeight,
@@ -736,10 +737,15 @@ function drawSchedule(
   // bottom of the panel so rows never run into the totals box. One row per
   // patched port — Drop | Patch panel | Switch, e.g. "NJCK-022 | PP 1 |
   // SW 1 / P 1". Rows with no drop yet print with a blank drop cell.
+  // The devices-by-switch box prints under the patching table, so its
+  // rows reserve room too.
   const dropsById = new Map(allDropMarkups(project).map((d) => [d.id, d]));
   const patchRows = patchTableRows(rack, rackDevicesById, dropsById);
+  const deviceRows = devicesBySwitchRows(rack, rackDevicesById, dropsById);
   const reserve =
-    100 + (patchRows.length > 0 ? 45 + patchRows.length * 11 : 0);
+    100 +
+    (patchRows.length > 0 ? 45 + patchRows.length * 11 : 0) +
+    (deviceRows.length > 0 ? 45 + deviceRows.length * 11 : 0);
 
   let totalW = 0;
   let totalLb = 0;
@@ -821,8 +827,11 @@ function drawSchedule(
   // drop, a switch patch, or both. A drop-first port prints with a
   // blank switch cell; a patched port with no drop yet prints with a
   // blank drop cell. Panel top-down then by port number.
+  let py = tbY - 12;
+  // Shared by the PATCHING and DEVICES BY SWITCH tables.
+  const patchColX = [x + 12, x + w / 3, x + (2 * w) / 3];
+  const patchColW = [w / 3 - 20, w / 3 - 12, w / 3 - 12];
   if (patchRows.length > 0) {
-    let py = tbY - 12;
     page.drawText("PATCHING", {
       x: x + 8,
       y: py,
@@ -838,8 +847,6 @@ function drawSchedule(
       height: 14,
       color: theme.accent,
     });
-    const patchColX = [x + 12, x + w / 3, x + (2 * w) / 3];
-    const patchColW = [w / 3 - 20, w / 3 - 12, w / 3 - 12];
     page.drawText("DROP", {
       x: patchColX[0],
       y: py - 11,
@@ -869,6 +876,67 @@ function drawSchedule(
         break;
       }
       const cells = [row.drop, row.panel, row.switch];
+      cells.forEach((cell, i) => {
+        page.drawText(safeText(fitText(fonts.regular, cell, patchColW[i], 7)), {
+          x: patchColX[i],
+          y: py,
+          size: 7,
+          font: fonts.regular,
+          color: theme.ink,
+        });
+      });
+    }
+  }
+
+  // Devices by switch — one row per device type per switch, with the
+  // switch ports collapsed into ranges. Only drops that have both a
+  // device type and a switch patch appear.
+  if (deviceRows.length > 0) {
+    py -= 12;
+    page.drawText("DEVICES BY SWITCH", {
+      x: x + 8,
+      y: py,
+      size: 8,
+      font: fonts.bold,
+      color: theme.accent,
+    });
+    py -= 11;
+    page.drawRectangle({
+      x: x + 6,
+      y: py - 14,
+      width: w - 12,
+      height: 14,
+      color: theme.accent,
+    });
+    page.drawText("DEVICE", {
+      x: patchColX[0],
+      y: py - 11,
+      size: 7,
+      font: fonts.bold,
+      color: theme.onAccent,
+    });
+    page.drawText("SWITCH", {
+      x: patchColX[1],
+      y: py - 11,
+      size: 7,
+      font: fonts.bold,
+      color: theme.onAccent,
+    });
+    page.drawText("PORTS", {
+      x: patchColX[2],
+      y: py - 11,
+      size: 7,
+      font: fonts.bold,
+      color: theme.onAccent,
+    });
+    py -= 14;
+    for (const row of deviceRows) {
+      py -= 11;
+      if (py < y + 10) {
+        page.drawText("…", { x: x + 8, y: py, size: 8, font: fonts.bold, color: theme.ink400 });
+        break;
+      }
+      const cells = [row.device, row.switch, row.ports];
       cells.forEach((cell, i) => {
         page.drawText(safeText(fitText(fonts.regular, cell, patchColW[i], 7)), {
           x: patchColX[i],

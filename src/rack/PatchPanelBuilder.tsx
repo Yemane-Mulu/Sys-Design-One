@@ -26,6 +26,7 @@ export function PatchPanelBuilder() {
   const activeRackId = useProjectStore((s) => s.activeRackId);
   const setActiveRack = useProjectStore((s) => s.setActiveRack);
   const assignDrop = useProjectStore((s) => s.assignPanelPortDrop);
+  const setDeviceType = useProjectStore((s) => s.setDropDeviceType);
 
   const [panelId, setPanelId] = useState("");
 
@@ -140,8 +141,10 @@ export function PatchPanelBuilder() {
             Attach a drop to a panel port, then patch the port to a switch
             — either order works. A drop on a port with no switch yet just
             waits there. One drop per port — picking a drop that is already
-            on another port moves it here. The table prints on the
-            elevation as Drop | Patch panel | Switch.
+            on another port moves it here. Type the device on each drop
+            (Inside Cam, POS, ATM…) — the export groups drops by switch
+            and device type. The table prints on the elevation as Drop |
+            Patch panel | Switch.
           </p>
         </div>
 
@@ -200,9 +203,10 @@ export function PatchPanelBuilder() {
                     {links.length} patched · {assignedCount} drops attached
                   </div>
                 </div>
-                <div className="grid grid-cols-[64px_1fr_1fr] gap-2 items-center text-[11px] font-medium text-ink-400 px-1">
+                <div className="grid grid-cols-[64px_1fr_150px_1fr] gap-2 items-center text-[11px] font-medium text-ink-400 px-1">
                   <span>Port</span>
                   <span>Drop</span>
+                  <span>Device</span>
                   <span>Switch</span>
                 </div>
                 {ports.map((port) => {
@@ -224,7 +228,7 @@ export function PatchPanelBuilder() {
                   return (
                     <div
                       key={port}
-                      className="grid grid-cols-[64px_1fr_1fr] gap-2 items-center px-1 py-1 rounded-md hover:bg-white/5"
+                      className="grid grid-cols-[64px_1fr_150px_1fr] gap-2 items-center px-1 py-1 rounded-md hover:bg-white/5"
                     >
                       <span className="text-xs text-ink-100 font-mono">
                         Port {port}
@@ -273,6 +277,27 @@ export function PatchPanelBuilder() {
                             {assignedDrop.notes.trim()}
                           </div>
                         ) : null}
+                      </div>
+                      <div className="min-w-0">
+                        {dropId ? (
+                          <input
+                            className="input w-full"
+                            value={assignedDrop?.deviceType ?? ""}
+                            placeholder="Device type"
+                            autoComplete="off"
+                            spellCheck={false}
+                            onChange={(e) =>
+                              setDeviceType(dropId, e.target.value)
+                            }
+                          />
+                        ) : (
+                          <input
+                            className="input w-full"
+                            value=""
+                            placeholder="—"
+                            disabled
+                          />
+                        )}
                       </div>
                       <span
                         className={

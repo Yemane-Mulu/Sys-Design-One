@@ -204,6 +204,83 @@ export function dropDisplayNumber(drop: DropMarkup | undefined): string {
   return drop.number?.trim() || drop.label?.trim() || "";
 }
 
+/** One row of the printed devices-by-switch table: a device type, the
+ *  switch it is on (by short name), and its switch ports collapsed
+ *  into ranges — e.g. { device: "Inside Cam", switch: "SW 1", ports:
+ *  "1-22" }. Rows group by switch (top-down, highest U first), then by
+ *  lowest port. Only drops that have both a device type and a switch
+ *  patch appear; the type is matched case-insensitively with extra
+ *  spaces ignored, so "Inside Cam" and "inside  cam" group together. */
+export interface DevicesBySwitchRow {
+  device: string;
+  switch: string;
+  ports: string;
+}
+
+export function devicesBySwitchRows(
+  rack: Rack,
+  devs: Record<string, RackDeviceType>,
+  dropsById?: Map<string, DropMarkup>,
+): DevicesBySwitchRow[] {
+  const byId = new Map(rack.placements.map((p) => [p.id, p]));
+  const groups = new Map<
+    string,
+    { device: string; switchId: string; ports: number[] }
+  >();
+  for (const l of rack.patchLinks ?? []) {
+    const drop = l.dropId ? dropsById?.get(l.dropId) : undefined;
+    const type = drop?.deviceType?.trim().replace(/\s+/g, " ");
+    if (!type) continue;
+    const toP = byId.get(l.toPlacementId);
+    if (!toP) continue;
+    const toDev = devs[toP.deviceId];
+    if (!toDev) continue;
+    const key = `${l.toPlacementId}\n${type.toLowerCase()}`;
+    const g = groups.get(key);
+    if (g) {
+      g.ports.push(l.toPort);
+    } else {
+      groups.set(key, {
+        device: type,
+        switchId: l.toPlacementId,
+        ports: [l.toPort],
+      });
+    }
+  }
+  return [...groups.values()]
+    .map((g) => {
+      const sw = byId.get(g.switchId)!;
+      const swDev = devs[sw.deviceId]!;
+      return {
+        device: g.device,
+        switch: placementPatchName(sw, swDev),
+        ports: collapsePortRanges(g.ports),
+        uSlot: sw.uSlot,
+        firstPort: Math.min(...g.ports),
+      };
+    })
+    .sort((a, b) => b.uSlot - a.uSlot || a.firstPort - b.firstPort)
+    .map(({ device, switch: sw, ports }) => ({ device, switch: sw, ports }));
+}
+
+/** Collapse port numbers into ranges: [1, 2, 3, 5, 7, 8] -> "1-3, 5, 7-8". */
+export function collapsePortRanges(ports: number[]): string {
+  const sorted = [...new Set(ports)].sort((a, b) => a - b);
+  if (sorted.length === 0) return "";
+  const parts: string[] = [];
+  let start = sorted[0];
+  let prev = sorted[0];
+  for (const n of sorted.slice(1)) {
+    if (n === prev + 1) {
+      prev = n;
+      continue;
+    }
+    parts.push(start === prev ? `${start}` : `${start}-${prev}`);
+    start = prev = n;
+  }
+  parts.push(start === prev ? `${start}` : `${start}-${prev}`);
+  return parts.join(", ");
+}
 /** One row of the printed patch table: a panel port, the drop on it
  *  ("" when none is assigned yet) and the switch port it patches to
  *  ("" when the port is not patched yet — a drop-first port still
