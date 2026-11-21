@@ -1,7 +1,12 @@
 // Shared rack geometry helpers — used by the editor frame, the properties
 // panel, and the elevation export so all three agree on what fits where.
 import { rackDevicesById, type RackDeviceType } from "../data/rackDevices";
-import type { Rack, RackPlacement, RackPatchLink } from "../store/projectStore";
+import type {
+  DropMarkup,
+  Rack,
+  RackPlacement,
+  RackPatchLink,
+} from "../store/projectStore";
 
 /** Effective U height of a placement: a per-placement override wins over
  *  the catalog height (e.g. the generic NVR is 3–5U, picked per job). */
@@ -192,11 +197,20 @@ export function placementPatchName(p: RackPlacement, dev: RackDeviceType): strin
   return s ? s : placementDisplayName(p, dev);
 }
 
-/** One row of the printed patch table: a panel port and the switch port
- *  it patches to, both by short name — e.g. { panel: "PP 1", switch:
- *  "SW 1 / P 1" }. Rows run panel top-down (highest U first), then by
- *  port number. */
+/** Text for a drop in the patch table: its plan label (e.g. "NJCK-022",
+ *  "FCAM-001"), falling back to its display label. "" when unassigned. */
+export function dropDisplayNumber(drop: DropMarkup | undefined): string {
+  if (!drop) return "";
+  return drop.number?.trim() || drop.label?.trim() || "";
+}
+
+/** One row of the printed patch table: a panel port, the drop patched
+ *  to it ("" when none is assigned yet — the row still prints, with a
+ *  blank drop cell), and the switch port it patches to, all by short
+ *  name — e.g. { drop: "NJCK-022", panel: "PP 1", switch: "SW 1 / P 1" }.
+ *  Rows run panel top-down (highest U first), then by port number. */
 export interface PatchTableRow {
+  drop: string;
   panel: string;
   switch: string;
 }
@@ -204,6 +218,7 @@ export interface PatchTableRow {
 export function patchTableRows(
   rack: Rack,
   devs: Record<string, RackDeviceType>,
+  dropsById?: Map<string, DropMarkup>,
 ): PatchTableRow[] {
   const byId = new Map(rack.placements.map((p) => [p.id, p]));
   const links = [...(rack.patchLinks ?? [])].sort((a, b) => {
@@ -221,6 +236,7 @@ export function patchTableRows(
     const toDev = devs[toP.deviceId];
     if (!fromDev || !toDev) continue;
     rows.push({
+      drop: dropDisplayNumber(l.dropId ? dropsById?.get(l.dropId) : undefined),
       panel: `${placementPatchName(fromP, fromDev)} ${l.fromPort}`,
       switch: `${placementPatchName(toP, toDev)} / P ${l.toPort}`,
     });

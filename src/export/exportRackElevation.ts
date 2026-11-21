@@ -18,6 +18,7 @@ import {
   placementUHeight,
   placementWidth,
 } from "../rack/rackUtils";
+import { allDropMarkups } from "../lib/dropLabels";
 
 const KN_MID = hex("#0B1220");
 const KN_INK = hex("#F5F7FA");
@@ -44,14 +45,116 @@ const BASE_RGB: Record<Faceplate["base"], ReturnType<typeof hex>> = {
   amber: hex("#F4B740"),
 };
 
-export async function exportRackElevation(project: Project, rack: Rack) {
+type ElevColor = ReturnType<typeof hex>;
+
+/** Color theme for the elevation. The color theme is the current dark
+ *  look; the B&W theme is the same layout on a white page for printers
+ *  with no color — black text and bars, white faceplates, black ports
+ *  and LEDs. `faceBase` / `port` / `led` / `bayBg` are functions because
+ *  the color theme varies them by equipment and the B&W theme flattens
+ *  them all to one value. */
+interface ElevTheme {
+  bw: boolean;
+  pageBg: ElevColor;
+  accent: ElevColor;
+  onAccent: ElevColor;
+  ink: ElevColor;
+  ink300: ElevColor;
+  ink400: ElevColor;
+  ink500: ElevColor;
+  steel: ElevColor;
+  chassis: ElevColor;
+  rail: ElevColor;
+  railHole: ElevColor;
+  guide: ElevColor;
+  scheduleBg: ElevColor;
+  totalsBg: ElevColor;
+  faceBase: (base: Faceplate["base"]) => ElevColor;
+  faceText: (kind: "accent" | "muted" | "plain") => ElevColor;
+  port: (kind: "amber" | "navy" | "green" | "white" | "black") => ElevColor;
+  led: (kind: LedKind) => ElevColor;
+  bayBg: (style: string | undefined) => ElevColor;
+}
+
+function colorTheme(accent: ElevColor): ElevTheme {
+  return {
+    bw: false,
+    pageBg: KN_MID,
+    accent,
+    onAccent: KN_MID,
+    ink: KN_INK,
+    ink300: KN_INK_300,
+    ink400: KN_INK_400,
+    ink500: KN_INK_500,
+    steel: KN_STEEL,
+    chassis: hex("#04080F"),
+    rail: hex("#1A2030"),
+    railHole: hex("#04080F"),
+    guide: hex("#0E1422"),
+    scheduleBg: hex("#0E141F"),
+    totalsBg: hex("#141C2B"),
+    faceBase: (base) => (base === "amber" ? accent : BASE_RGB[base]),
+    faceText: (kind) =>
+      kind === "accent" ? accent : kind === "muted" ? KN_INK_400 : KN_INK,
+    port: (kind) =>
+      ({
+        amber: accent,
+        navy: hex("#1F3A5F"),
+        green: hex("#2BD37C"),
+        white: hex("#E2E7EF"),
+        black: hex("#1A2030"),
+      })[kind],
+    led: (kind) => (kind === "link" ? accent : LED_RGB[kind]),
+    bayBg: (style) =>
+      style === "battery"
+        ? hex("#14202E")
+        : style === "outlet"
+          ? hex("#08101A")
+          : style === "vent"
+            ? hex("#1A2030")
+            : hex("#0B0F18"),
+  };
+}
+
+function bwTheme(): ElevTheme {
+  const black = hex("#000000");
+  const white = hex("#FFFFFF");
+  return {
+    bw: true,
+    pageBg: white,
+    accent: black,
+    onAccent: white,
+    ink: black,
+    ink300: hex("#333333"),
+    ink400: hex("#666666"),
+    ink500: hex("#999999"),
+    steel: black,
+    chassis: hex("#F2F2F2"),
+    rail: hex("#E5E5E5"),
+    railHole: black,
+    guide: hex("#DDDDDD"),
+    scheduleBg: white,
+    totalsBg: hex("#F2F2F2"),
+    faceBase: () => white,
+    faceText: (kind) => (kind === "muted" ? hex("#555555") : black),
+    port: () => black,
+    led: () => black,
+    bayBg: () => hex("#E5E5E5"),
+  };
+}
+
+export async function exportRackElevation(
+  project: Project,
+  rack: Rack,
+  opts?: { blackAndWhite?: boolean },
+) {
   const out = await PDFDocument.create();
   const fonts = await loadBrandFonts(out);
   const branding = resolveBranding(project.branding);
   const logoImage = await maybeEmbedLogo(out, branding.logoDataUrl);
   // Letter portrait — fits a 42U rack comfortably with title + schedule.
   const page = out.addPage([612, 792]);
-  drawElevation(page, fonts, project, rack, branding, logoImage);
+  drawElevation(page, fonts, project, rack, branding, logoImage, opts?.blackAndWhite ?? false);
 
   const bytes = await out.save();
   // Brand the filename so multi-company users can tell exports apart at
@@ -62,7 +165,7 @@ export async function exportRackElevation(project: Project, rack: Rack) {
       .replace(/^-+|-+$/g, "") || "Brand";
   triggerDownload(
     bytes,
-    `${project.meta.projectName.replace(/\s+/g, "-")}_${brandSlug}_${rack.name.replace(/\s+/g, "-")}_Elevation.pdf`,
+    `${project.meta.projectName.replace(/\s+/g, "-")}_${brandSlug}_${rack.name.replace(/\s+/g, "-")}_Elevation${opts?.blackAndWhite ? "_BW" : ""}.pdf`,
   );
 }
 
@@ -93,12 +196,14 @@ function drawElevation(
   rack: Rack,
   branding: BrandingConfig,
   logoImage: PDFImage | undefined,
+  blackAndWhite: boolean,
 ) {
   const { width: pw, height: ph } = page.getSize();
-  const ACCENT = hex(branding.accentColor);
+  const theme = blackAndWhite ? bwTheme() : colorTheme(hex(branding.accentColor));
+  const ACCENT = theme.accent;
 
   // Background
-  page.drawRectangle({ x: 0, y: 0, width: pw, height: ph, color: KN_MID });
+  page.drawRectangle({ x: 0, y: 0, width: pw, height: ph, color: theme.pageBg });
   page.drawRectangle({ x: 0, y: ph - 6, width: pw, height: 6, color: ACCENT });
 
   // ─── Header — uploaded logo (no default mark) + wordmark ───
@@ -119,15 +224,15 @@ function drawElevation(
   const headerLeft = logoImage ? 78 : 30;
   let wmCursor = headerLeft;
   if (wmA) {
-    page.drawText(wmA, { x: wmCursor, y: ph - 56, size: 22, font: fonts.bold, color: KN_INK });
+    page.drawText(wmA, { x: wmCursor, y: ph - 56, size: 22, font: fonts.bold, color: theme.ink });
     wmCursor += fonts.bold.widthOfTextAtSize(wmA, 22) + 2;
   }
   if (wmB) {
     page.drawText(wmB, { x: wmCursor, y: ph - 56, size: 22, font: fonts.regular, color: ACCENT });
   }
-  page.drawText("RACK ELEVATION", { x: headerLeft, y: ph - 76, size: 8, font: fonts.bold, color: KN_INK_300 });
+  page.drawText("RACK ELEVATION", { x: headerLeft, y: ph - 76, size: 8, font: fonts.bold, color: theme.ink300 });
 
-  page.drawText("DOCUMENT", { x: pw - 130, y: ph - 50, size: 7, font: fonts.bold, color: KN_INK_400 });
+  page.drawText("DOCUMENT", { x: pw - 130, y: ph - 50, size: 7, font: fonts.bold, color: theme.ink400 });
   // Doc code uses the brand's prefix so codes match what the markup PDF
   // and bid PDF print (e.g. AC-12345-RACK-Equipment).
   const code = safeText(
@@ -139,21 +244,21 @@ function drawElevation(
     y: ph - 78,
     size: 7,
     font: fonts.regular,
-    color: KN_INK_300,
+    color: theme.ink300,
   });
 
   // ─── Project + rack title block ───
   let y = ph - 110;
-  page.drawText("PROJECT", { x: 30, y, size: 7, font: fonts.bold, color: KN_INK_400 });
+  page.drawText("PROJECT", { x: 30, y, size: 7, font: fonts.bold, color: theme.ink400 });
   y -= 12;
-  page.drawText(safeText(project.meta.projectName), { x: 30, y, size: 14, font: fonts.bold, color: KN_INK });
+  page.drawText(safeText(project.meta.projectName), { x: 30, y, size: 14, font: fonts.bold, color: theme.ink });
   y -= 14;
   if (project.meta.location) {
-    page.drawText(safeText(project.meta.location), { x: 30, y, size: 8, font: fonts.regular, color: KN_INK_300 });
+    page.drawText(safeText(project.meta.location), { x: 30, y, size: 8, font: fonts.regular, color: theme.ink300 });
     y -= 10;
   }
 
-  page.drawText("RACK", { x: pw / 2, y: ph - 110, size: 7, font: fonts.bold, color: KN_INK_400 });
+  page.drawText("RACK", { x: pw / 2, y: ph - 110, size: 7, font: fonts.bold, color: theme.ink400 });
   page.drawText(safeText(rack.name.toUpperCase()), {
     x: pw / 2,
     y: ph - 122,
@@ -166,7 +271,7 @@ function drawElevation(
     y: ph - 136,
     size: 8,
     font: fonts.regular,
-    color: KN_INK_300,
+    color: theme.ink300,
   });
 
   // ─── Rack chassis ───
@@ -186,14 +291,14 @@ function drawElevation(
     y: rackBottom,
     width: rackTotalW,
     height: rackHeight,
-    color: hex("#04080F"),
-    borderColor: KN_STEEL,
+    color: theme.chassis,
+    borderColor: theme.steel,
     borderWidth: 0.5,
   });
 
   // Rails
-  drawRail(page, fonts, rackLeft, rackBottom, railW, rackHeight, rack.uHeight, "left");
-  drawRail(page, fonts, rackLeft + railW + interiorW, rackBottom, railW, rackHeight, rack.uHeight, "right");
+  drawRail(page, fonts, rackLeft, rackBottom, railW, rackHeight, rack.uHeight, "left", theme);
+  drawRail(page, fonts, rackLeft + railW + interiorW, rackBottom, railW, rackHeight, rack.uHeight, "right", theme);
 
   // Subtle U guides
   for (let u = 1; u < rack.uHeight; u++) {
@@ -201,7 +306,7 @@ function drawElevation(
     page.drawLine({
       start: { x: interiorLeft, y: ly },
       end: { x: interiorLeft + interiorW, y: ly },
-      color: hex("#0E1422"),
+      color: theme.guide,
       thickness: 0.3,
     });
   }
@@ -220,11 +325,11 @@ function drawElevation(
         ? interiorLeft + (p.side === "right" ? interiorW / 2 : 0)
         : interiorLeft;
     const faceW = w === "half" ? interiorW / 2 : interiorW;
-    drawFaceplate(page, fonts, dev, p.label, faceX, deviceBottom, faceW, deviceTop - deviceBottom, ACCENT);
+    drawFaceplate(page, fonts, dev, p.label, faceX, deviceBottom, faceW, deviceTop - deviceBottom, theme);
   }
 
   // ─── Schedule + totals ───
-  drawSchedule(page, fonts, rack, 290, rackBottom, pw - 320, rackHeight, ACCENT);
+  drawSchedule(page, fonts, project, rack, 290, rackBottom, pw - 320, rackHeight, theme);
 
   // Footer — drawnBy falls through to the brand's full name when the
   // user hasn't put their own name in the project metadata.
@@ -237,7 +342,7 @@ function drawElevation(
       y: 24,
       size: 7,
       font: fonts.regular,
-      color: KN_INK_400,
+      color: theme.ink400,
     },
   );
 }
@@ -253,14 +358,15 @@ function drawRail(
   h: number,
   uHeight: number,
   side: "left" | "right",
+  theme: ElevTheme,
 ) {
   page.drawRectangle({
     x,
     y: yBottom,
     width: w,
     height: h,
-    color: hex("#1A2030"),
-    borderColor: KN_STEEL,
+    color: theme.rail,
+    borderColor: theme.steel,
     borderWidth: 0.4,
   });
   const uPx = h / uHeight;
@@ -271,7 +377,7 @@ function drawRail(
       x: x + w / 2,
       y: cy,
       size: 1.4,
-      color: hex("#04080F"),
+      color: theme.railHole,
     });
     // U number every 4U for readability
     if (u % 4 === 0 || u === 1 || u === uHeight) {
@@ -282,7 +388,7 @@ function drawRail(
         y: cy - 1.6,
         size: 5,
         font: fonts.regular,
-        color: KN_INK_400,
+        color: theme.ink400,
       });
     }
   }
@@ -299,14 +405,15 @@ function drawFaceplate(
   y: number,
   w: number,
   h: number,
-  accent: ReturnType<typeof hex>,
+  theme: ElevTheme,
 ) {
   const f = dev.faceplate;
   // The `amber` faceplate base color tracks the user's brand accent so
   // a non-amber brand still gets a coherent-looking equipment chassis.
   // The other base colors (black/graphite/white/silver) are physical
-  // materials — they don't change with branding.
-  const baseColor = f.base === "amber" ? accent : BASE_RGB[f.base];
+  // materials — they don't change with branding. In B&W every base is
+  // white so the print stays readable.
+  const baseColor = theme.faceBase(f.base);
   // Base
   page.drawRectangle({ x, y, width: w, height: h, color: baseColor });
   // top highlight band
@@ -329,8 +436,8 @@ function drawFaceplate(
 
   // Mounting screws
   if (f.screws) {
-    page.drawCircle({ x: x + 3.5, y: y + h / 2, size: 1.6, color: hex("#5E6B85") });
-    page.drawCircle({ x: x + w - 3.5, y: y + h / 2, size: 1.6, color: hex("#5E6B85") });
+    page.drawCircle({ x: x + 3.5, y: y + h / 2, size: 1.6, color: theme.ink400 });
+    page.drawCircle({ x: x + w - 3.5, y: y + h / 2, size: 1.6, color: theme.ink400 });
   }
 
   // Brand stripe (per-equipment color — e.g. Cisco blue, APC green).
@@ -338,7 +445,7 @@ function drawFaceplate(
   // user's brand accent so the document feels coherent.
   if (f.brand) {
     const bx = x + (f.brand.x / 100) * w;
-    const stripeColor = f.brand.accent ? hex(f.brand.accent) : accent;
+    const stripeColor = theme.bw ? theme.accent : f.brand.accent ? hex(f.brand.accent) : theme.accent;
     page.drawRectangle({
       x: bx,
       y: y + h * 0.18,
@@ -355,11 +462,7 @@ function drawFaceplate(
     const bh = (b.h / 100) * h;
     const yPct = (b.y ?? 12) / 100;
     const by = y + h - bh - h * yPct;
-    let bg = hex("#0B0F18");
-    if (b.style === "battery") bg = hex("#14202E");
-    else if (b.style === "outlet") bg = hex("#08101A");
-    else if (b.style === "vent") bg = hex("#1A2030");
-    else if (b.style === "hdd") bg = hex("#0B0F18");
+    const bg = theme.bayBg(b.style);
 
     page.drawRectangle({
       x: bx,
@@ -367,7 +470,7 @@ function drawFaceplate(
       width: bw,
       height: bh,
       color: bg,
-      borderColor: hex("#3A4458"),
+      borderColor: theme.ink500,
       borderWidth: 0.3,
     });
     if (b.style === "vent") {
@@ -387,7 +490,7 @@ function drawFaceplate(
         x: bx + bw - 1.6,
         y: by + bh - 1.6,
         size: 0.6,
-        color: hex("#2BD37C"),
+        color: theme.led("power"),
       });
     }
     if (b.style === "outlet") {
@@ -416,7 +519,7 @@ function drawFaceplate(
         y: by + 1,
         size: lblSize,
         font: fonts.regular,
-        color: KN_INK_300,
+        color: theme.ink300,
       });
     }
   }
@@ -451,7 +554,7 @@ function drawFaceplate(
         text: f.brand.text,
         size: Math.max(5, h * 0.22),
         font: fonts.bold,
-        color: f.brand.accent ? hex(f.brand.accent) : accent,
+        color: theme.bw ? theme.accent : f.brand.accent ? hex(f.brand.accent) : theme.accent,
       });
     }
     for (const t of f.texts ?? []) {
@@ -461,12 +564,9 @@ function drawFaceplate(
         font: t.weight === "bold" ? fonts.bold : fonts.regular,
         // Faceplate text colors — `amber` refers to the brand accent (so
         // the text follows the user's color), the other tokens are neutral.
-        color:
-          t.color === "amber"
-            ? accent
-            : t.color === "muted"
-              ? KN_INK_400
-              : KN_INK,
+        color: theme.faceText(
+          t.color === "amber" ? "accent" : t.color === "muted" ? "muted" : "plain",
+        ),
       });
     }
     if (segments.length > 0 && lineMaxW > 10) {
@@ -492,23 +592,17 @@ function drawFaceplate(
           y: lineY,
           size: segments[0].size,
           font: fonts.regular,
-          color: KN_INK,
+          color: theme.ink,
         });
       }
     }
   }
 
   // Port groups — `amber` is the abstract brand-accent token, the rest
-  // are literal port colors that match the physical equipment.
+  // are literal port colors that match the physical equipment. In B&W
+  // every port is black.
   for (const g of f.ports ?? []) {
-    const colorMap = {
-      amber: accent,
-      navy: hex("#1F3A5F"),
-      green: hex("#2BD37C"),
-      white: hex("#E2E7EF"),
-      black: hex("#1A2030"),
-    } as const;
-    const portColor = colorMap[g.color ?? "amber"];
+    const portColor = theme.port(g.color ?? "amber");
     const rows = g.rows ?? 1;
     const portsPerRow = Math.ceil(g.count / rows);
     const portW = Math.max(1.4, Math.min(3.2, 16 / portsPerRow));
@@ -542,7 +636,7 @@ function drawFaceplate(
     const yPct = (l.y ?? 28) / 100;
     const ly = y + h - h * yPct - 2;
     const size = Math.max(0.7, h * 0.08);
-    const color = l.kind === "link" ? accent : LED_RGB[l.kind];
+    const color = theme.led(l.kind);
     page.drawCircle({
       x: lx,
       y: ly,
@@ -564,7 +658,7 @@ function drawFaceplate(
       height: sz + 1.5,
       color: hex("#000000"),
       opacity: 0.7,
-      borderColor: accent,
+      borderColor: theme.accent,
       borderWidth: 0.3,
     });
     page.drawText(txt, {
@@ -572,7 +666,7 @@ function drawFaceplate(
       y: y + 1.8,
       size: sz,
       font: fonts.bold,
-      color: accent,
+      color: theme.bw ? theme.onAccent : theme.accent,
     });
   }
 }
@@ -582,12 +676,13 @@ function drawFaceplate(
 function drawSchedule(
   page: PDFPage,
   fonts: BrandFonts,
+  project: Project,
   rack: Rack,
   x: number,
   y: number,
   w: number,
   h: number,
-  accent: ReturnType<typeof hex>,
+  theme: ElevTheme,
 ) {
   // Background panel
   page.drawRectangle({
@@ -595,8 +690,8 @@ function drawSchedule(
     y,
     width: w,
     height: h,
-    color: hex("#0E141F"),
-    borderColor: KN_STEEL,
+    color: theme.scheduleBg,
+    borderColor: theme.steel,
     borderWidth: 0.4,
   });
   // Header
@@ -605,21 +700,21 @@ function drawSchedule(
     y: y + h - 18,
     width: w,
     height: 18,
-    color: accent,
+    color: theme.accent,
   });
   page.drawText("RACK SCHEDULE", {
     x: x + 8,
     y: y + h - 13,
     size: 9,
     font: fonts.bold,
-    color: KN_MID,
+    color: theme.onAccent,
   });
   page.drawText(`${rack.placements.length} ITEMS`, {
     x: x + w - 70,
     y: y + h - 13,
     size: 8,
     font: fonts.bold,
-    color: KN_MID,
+    color: theme.onAccent,
   });
 
   // Column widths rebalanced: the TAG column was 42pt and every value was
@@ -628,19 +723,21 @@ function drawSchedule(
   const colW = [30, 94, 72, w - 212];
   let cursorY = y + h - 32;
   // Column header
-  drawCols(page, fonts, x + 8, cursorY, ["U", "DEVICE", "MFG·MODEL", "TAG"], colW);
+  drawCols(page, fonts, x + 8, cursorY, ["U", "DEVICE", "MFG·MODEL", "TAG"], colW, theme);
   cursorY -= 9;
   page.drawLine({
     start: { x: x + 6, y: cursorY + 6 },
     end: { x: x + w - 6, y: cursorY + 6 },
     thickness: 0.3,
-    color: KN_INK_500,
+    color: theme.ink500,
   });
 
   // Patch rows print under the totals; reserve room for them at the
   // bottom of the panel so rows never run into the totals box. One row per
-  // patched port, by short name — "PP 1" -> "SW 1 / P 1".
-  const patchRows = patchTableRows(rack, rackDevicesById);
+  // patched port — Drop | Patch panel | Switch, e.g. "NJCK-022 | PP 1 |
+  // SW 1 / P 1". Rows with no drop yet print with a blank drop cell.
+  const dropsById = new Map(allDropMarkups(project).map((d) => [d.id, d]));
+  const patchRows = patchTableRows(rack, rackDevicesById, dropsById);
   const reserve =
     100 + (patchRows.length > 0 ? 45 + patchRows.length * 11 : 0);
 
@@ -654,7 +751,7 @@ function drawSchedule(
     const d = rackDevicesById[p.deviceId];
     if (!d) continue;
     if (cursorY < y + reserve) {
-      page.drawText("…", { x: x + 8, y: cursorY, size: 8, font: fonts.bold, color: KN_INK_400 });
+      page.drawText("…", { x: x + 8, y: cursorY, size: 8, font: fonts.bold, color: theme.ink400 });
       break;
     }
     const effH = placementUHeight(p, d);
@@ -667,7 +764,7 @@ function drawSchedule(
         colW[2] - 4,
       ),
       fitText(fonts.regular, p.label ?? "", colW[3] - 4),
-    ], colW);
+    ], colW, theme);
     cursorY -= 11;
     totalW += d.powerWatts;
     totalLb += d.weightLbs;
@@ -687,8 +784,8 @@ function drawSchedule(
     y: tbY,
     width: w - 12,
     height: tbH,
-    color: hex("#141C2B"),
-    borderColor: accent,
+    color: theme.totalsBg,
+    borderColor: theme.accent,
     borderWidth: 0.4,
   });
   page.drawRectangle({
@@ -696,14 +793,14 @@ function drawSchedule(
     y: tbY + tbH - 14,
     width: w - 12,
     height: 14,
-    color: accent,
+    color: theme.accent,
   });
   page.drawText("TOTALS", {
     x: x + 12,
     y: tbY + tbH - 11,
     size: 8,
     font: fonts.bold,
-    color: KN_MID,
+    color: theme.onAccent,
   });
 
   const lines: [string, string][] = [
@@ -714,14 +811,14 @@ function drawSchedule(
   ];
   let ly = tbY + tbH - 28;
   for (const [k, v] of lines) {
-    page.drawText(k, { x: x + 12, y: ly, size: 8, font: fonts.regular, color: KN_INK_300 });
+    page.drawText(k, { x: x + 12, y: ly, size: 8, font: fonts.regular, color: theme.ink300 });
     const vw = fonts.bold.widthOfTextAtSize(v, 8);
-    page.drawText(v, { x: x + w - 12 - vw, y: ly, size: 8, font: fonts.bold, color: KN_INK });
+    page.drawText(v, { x: x + w - 12 - vw, y: ly, size: 8, font: fonts.bold, color: theme.ink });
     ly -= 14;
   }
 
-  // Patching — two-column table, one row per patched port, by short name.
-  // Only the patched ports, panel top-down then by port number.
+  // Patching — three-column table, one row per patched port, by short
+  // name. Only the patched ports, panel top-down then by port number.
   if (patchRows.length > 0) {
     let py = tbY - 12;
     page.drawText("PATCHING", {
@@ -729,7 +826,7 @@ function drawSchedule(
       y: py,
       size: 8,
       font: fonts.bold,
-      color: accent,
+      color: theme.accent,
     });
     py -= 11;
     page.drawRectangle({
@@ -737,43 +834,47 @@ function drawSchedule(
       y: py - 14,
       width: w - 12,
       height: 14,
-      color: accent,
+      color: theme.accent,
+    });
+    const patchColX = [x + 12, x + w / 3, x + (2 * w) / 3];
+    const patchColW = [w / 3 - 20, w / 3 - 12, w / 3 - 12];
+    page.drawText("DROP", {
+      x: patchColX[0],
+      y: py - 11,
+      size: 7,
+      font: fonts.bold,
+      color: theme.onAccent,
     });
     page.drawText("PATCH PANEL", {
-      x: x + 12,
+      x: patchColX[1],
       y: py - 11,
       size: 7,
       font: fonts.bold,
-      color: KN_MID,
+      color: theme.onAccent,
     });
-    const swX = x + w / 2;
     page.drawText("SWITCH", {
-      x: swX,
+      x: patchColX[2],
       y: py - 11,
       size: 7,
       font: fonts.bold,
-      color: KN_MID,
+      color: theme.onAccent,
     });
     py -= 14;
     for (const row of patchRows) {
       py -= 11;
       if (py < y + 10) {
-        page.drawText("…", { x: x + 8, y: py, size: 8, font: fonts.bold, color: KN_INK_400 });
+        page.drawText("…", { x: x + 8, y: py, size: 8, font: fonts.bold, color: theme.ink400 });
         break;
       }
-      page.drawText(safeText(fitText(fonts.regular, row.panel, w / 2 - 20, 7)), {
-        x: x + 12,
-        y: py,
-        size: 7,
-        font: fonts.regular,
-        color: KN_INK,
-      });
-      page.drawText(safeText(fitText(fonts.regular, row.switch, w / 2 - 12, 7)), {
-        x: swX,
-        y: py,
-        size: 7,
-        font: fonts.regular,
-        color: KN_INK,
+      const cells = [row.drop, row.panel, row.switch];
+      cells.forEach((cell, i) => {
+        page.drawText(safeText(fitText(fonts.regular, cell, patchColW[i], 7)), {
+          x: patchColX[i],
+          y: py,
+          size: 7,
+          font: fonts.regular,
+          color: theme.ink,
+        });
       });
     }
   }
@@ -786,6 +887,7 @@ function drawCols(
   y: number,
   cols: string[],
   widths: number[],
+  theme: ElevTheme,
 ) {
   let cx = x0;
   cols.forEach((c, i) => {
@@ -794,7 +896,7 @@ function drawCols(
       y,
       size: 7,
       font: fonts.regular,
-      color: KN_INK,
+      color: theme.ink,
     });
     cx += widths[i];
   });

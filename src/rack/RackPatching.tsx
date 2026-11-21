@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useProjectStore,
   type Rack,
   type RackPlacement,
 } from "../store/projectStore";
 import { rackDevicesById } from "../data/rackDevices";
+import { allDropMarkups } from "../lib/dropLabels";
 import {
+  dropDisplayNumber,
   groupPatchLinks,
   patchGroupText,
   patchablePorts,
@@ -33,6 +35,11 @@ export function RackPatching({ rack, onSelectPlacement }: Props) {
   const addPatchLink = useProjectStore((s) => s.addPatchLink);
   const addPatchLinks = useProjectStore((s) => s.addPatchLinks);
   const removePatchLink = useProjectStore((s) => s.removePatchLink);
+  const project = useProjectStore((s) => s.project);
+  const dropById = useMemo(
+    () => new Map((project ? allDropMarkups(project) : []).map((d) => [d.id, d])),
+    [project],
+  );
 
   const [panelId, setPanelId] = useState("");
   const [switchId, setSwitchId] = useState("");
@@ -297,10 +304,26 @@ export function RackPatching({ rack, onSelectPlacement }: Props) {
                 if (!fromP || !toP) return null;
                 const fromName = placementPatchName(fromP, rackDevicesById[fromP.deviceId]!);
                 const toName = placementPatchName(toP, rackDevicesById[toP.deviceId]!);
+                // Drops attached to this group's ports, one per port.
+                const dropLine = links
+                  .filter(
+                    (x) =>
+                      x.fromPlacementId === g.fromPlacementId &&
+                      x.toPlacementId === g.toPlacementId &&
+                      x.dropId,
+                  )
+                  .map(
+                    (x) =>
+                      `Port ${x.fromPort}: ${dropDisplayNumber(dropById.get(x.dropId!))}`,
+                  )
+                  .join(" · ");
                 return (
                   <div key={`${g.fromPlacementId}->${g.toPlacementId}`} className="flex items-start justify-between gap-2">
                     <span className="text-[11px] text-ink-200 leading-snug">
                       {patchGroupText(g, fromName, toName)}
+                      {dropLine && (
+                        <span className="block text-ink-400">{dropLine}</span>
+                      )}
                     </span>
                     <button
                       className="text-[11px] text-signal-red hover:underline shrink-0"

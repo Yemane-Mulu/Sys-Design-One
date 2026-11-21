@@ -12,6 +12,7 @@ import { CalibrationDialog } from "./CalibrationDialog";
 import { saveProject } from "../persist/db";
 import { RackBuilder } from "../rack/RackBuilder";
 import { DiagramBuilder } from "../diagrams/DiagramBuilder";
+import { PatchPanelBuilder } from "../rack/PatchPanelBuilder";
 import { SystemSurveyorImportModal } from "./SystemSurveyorImportModal";
 import { useFlowHintClass } from "../hooks/useFlowHints";
 import {
@@ -72,6 +73,8 @@ export function Workspace() {
         <RackBuilder />
       ) : view === "diagrams" ? (
         <DiagramBuilder />
+      ) : view === "patch-panels" ? (
+        <PatchPanelBuilder />
       ) : (
         <div className="flex-1 flex overflow-hidden">
           <LeftRail className="!hidden md:!flex" />

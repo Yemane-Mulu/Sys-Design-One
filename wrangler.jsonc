@@ -1,0 +1,1 @@
+{"$schema":"https://developers.cloudflare.com/workers/wrangler/configuration-schema.json","assets":{"directory":"./dist"},"compatibility_date":"2026-11-01","main":"worker/vision.ts","name":"sys-design-one"}

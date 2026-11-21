@@ -18,7 +18,7 @@
 //   read — before anything is created.
 
 import type * as pdfjsLib from "pdfjs-dist";
-import type { RackPlacement } from "../store/projectStore";
+import type { DropService, RackPlacement } from "../store/projectStore";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -338,4 +338,110 @@ export async function uploadSurveyorPdf(file: File): Promise<void> {
     filename: file.name,
     sheetIds: sheets.map((s) => s.id),
   });
+}
+
+// ───────── Vision import (single-page layout PDFs) ─────────
+//
+// Some clients only have the one-page layout — no BOM table for the
+// no-AI parser to read. For those, the page is rendered to an image and
+// sent to the vision Worker (OpenRouter key lives there as a secret).
+// The model only READS labels and the legend; it classifies nothing.
+// The user assigns each label a device type in the review popup, the
+// counts are checked against the legend there, and drops are saved
+// under the plan labels exactly as printed — no renumbering.
+
+/** Device types the user assigns in the review popup — his list, exactly. */
+export const VISION_DEVICE_TYPES = [
+  "Cam",
+  "AP",
+  "POS",
+  "Speaker",
+  "Tablet",
+  "Office",
+  "ATM",
+] as const;
+export type VisionDeviceType = (typeof VISION_DEVICE_TYPES)[number];
+
+/** One label the model read off the plan. */
+export interface VisionLabel {
+  /** Label exactly as printed, e.g. "FCAM-001", "NJCK-022". */
+  text: string;
+  /** Position as fractions of the page image, origin top-left. */
+  x: number;
+  y: number;
+}
+
+/** One legend entry, mapped to a device type by the model. */
+export interface VisionKeyEntry {
+  type: VisionDeviceType;
+  /** Legend entry name as printed, e.g. "Fixed Camera". */
+  name: string;
+  /** Count the legend states for this type, null when it states none. */
+  count: number | null;
+}
+
+export interface VisionResult {
+  labels: VisionLabel[];
+  key: VisionKeyEntry[];
+  model: string;
+}
+
+/** Drop service for an assigned device type — cameras and APs ride PoE. */
+export function visionServiceFor(type: VisionDeviceType): DropService {
+  if (type === "Cam") return "camera";
+  if (type === "AP" || type === "Speaker") return "poe";
+  return "data";
+}
+
+/** Render the first page of the uploaded PDF to a PNG data URL for the
+ *  vision call and the review overlay. Dynamic pdf.js import, same as
+ *  extractSurveyorText. Pass a fresh copy of the bytes — pdf.js may
+ *  detach the ArrayBuffer it is given. */
+export async function renderSurveyorPageImage(
+  bytes: Uint8Array,
+): Promise<{ dataUrl: string; width: number; height: number }> {
+  const { getCachedDoc, renderPageToCanvas } = await import("./pdfjs");
+  const doc: pdfjsLib.PDFDocumentProxy = await getCachedDoc(bytes);
+  const page = await doc.getPage(1);
+  const viewport = page.getViewport({ scale: 1 });
+  const scale = Math.min(3, 2000 / viewport.width);
+  const { canvas } = await renderPageToCanvas(page, scale);
+  return { dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height };
+}
+
+/** Call the vision proxy (same-origin Worker). Throws an Error whose
+ *  message is safe to show in the modal. */
+export async function analyzeSurveyorPage(imageDataUrl: string): Promise<VisionResult> {
+  const res = await fetch("/api/surveyor-vision", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: imageDataUrl }),
+  });
+  let data: { error?: string } | null = null;
+  try {
+    data = (await res.json()) as { error?: string };
+  } catch {
+    // Fall through to the error below.
+  }
+  if (!res.ok) {
+    throw new Error(data?.error ?? `Vision service returned ${res.status}`);
+  }
+  return data as VisionResult;
+}
+
+/** Rack sizing from vision assignments: every assigned drop is a network
+ *  port; cameras drive the NVR. Reuses the same planner as the table
+ *  import so both paths size racks the same way. */
+export function visionProposalForAssignments(types: VisionDeviceType[]): SurveyorProposal {
+  const cameras = types.filter((t) => t === "Cam").length;
+  const aps = types.filter((t) => t === "AP").length;
+  return {
+    isSurveyor: true,
+    items: [],
+    cameras,
+    drops: types.length - cameras - aps,
+    aps,
+    networkPorts: types.length,
+    unmatchedRows: 0,
+  };
 }

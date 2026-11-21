@@ -14,6 +14,7 @@ import {
   Server,
   Share2,
   GitBranch,
+  Cable,
 } from "lucide-react";
 import { exportMarkupPdf } from "../export/exportMarkupPdf";
 import { exportBidXlsx, exportBidPdf } from "../export/exportBid";
@@ -46,6 +47,8 @@ export function Topbar() {
   const [forking, setForking] = useState(false);
   const racksCount = project?.racks?.length ?? 0;
   const diagramsCount = project?.diagrams?.length ?? 0;
+  const patchCount =
+    project?.racks?.reduce((acc, r) => acc + (r.patchLinks?.length ?? 0), 0) ?? 0;
 
   if (!project) return null;
 
@@ -207,6 +210,17 @@ export function Topbar() {
             Diagrams
             <span className="ml-1 px-1 rounded text-[10px] font-mono bg-white/5">
               {diagramsCount}
+            </span>
+          </button>
+          <button
+            onClick={() => setView("patch-panels")}
+            className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-all ${view === "patch-panels" ? "bg-amber-knox/15 text-amber-knox" : "text-ink-300 hover:text-ink-100"}`}
+            title="Attach drops to patched ports"
+          >
+            <Cable className="w-3.5 h-3.5" />
+            Patch Panels
+            <span className="ml-1 px-1 rounded text-[10px] font-mono bg-white/5">
+              {patchCount}
             </span>
           </button>
         </div>

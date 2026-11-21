@@ -15,6 +15,9 @@ export function RackBuilder() {
   const pushToast = useProjectStore((s) => s.pushToast);
   const [uPx, setUPx] = useState(28);
   const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
+  // Black & white export for printers with no color — same layout, white
+  // page, black text and bars, gray faceplates. Stays as set between exports.
+  const [bwExport, setBwExport] = useState(false);
 
   useEffect(() => {
     setSelectedPlacementId(null);
@@ -38,8 +41,8 @@ export function RackBuilder() {
   const onExport = async () => {
     if (!project || !activeRack) return;
     try {
-      await exportRackElevation(project, activeRack);
-      pushToast("success", "Rack elevation exported");
+      await exportRackElevation(project, activeRack, { blackAndWhite: bwExport });
+      pushToast("success", bwExport ? "Rack elevation exported (B&W)" : "Rack elevation exported");
     } catch (e) {
       console.error(e);
       pushToast("error", "Export failed");
@@ -83,6 +86,13 @@ export function RackBuilder() {
             <ZoomIn className="w-4 h-4" />
           </button>
           <div className="w-px h-5 bg-white/10 mx-1" />
+          <button
+            onClick={() => setBwExport((v) => !v)}
+            className={bwExport ? "btn-primary" : "btn"}
+            title="Black & white export — same layout, white page, for printers with no color"
+          >
+            B&W
+          </button>
           <button onClick={onExport} className="btn-primary" disabled={!activeRack}>
             <FileDown className="w-3.5 h-3.5" />
             Export elevation

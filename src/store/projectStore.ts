@@ -92,7 +92,7 @@ export type { FlowHintStep };
 
 export type QualityMode = "speed" | "balanced" | "quality";
 
-export type ViewMode = "sheets" | "racks" | "diagrams";
+export type ViewMode = "sheets" | "racks" | "diagrams" | "patch-panels";
 
 // ───────── Diagram types ─────────
 //
@@ -182,6 +182,9 @@ export interface RackPatchLink {
   toPlacementId: string;
   /** switch port number (1-based) */
   toPort: number;
+  /** drop markup id patched to this port (Patch Panels tab). One drop
+   *  per link; assigning a drop already on another link moves it. */
+  dropId?: string;
 }
 
 export interface Rack {
@@ -1475,6 +1478,14 @@ interface State {
   addPatchLink: (rackId: string, link: RackPatchLink) => void;
   addPatchLinks: (rackId: string, links: RackPatchLink[]) => void;
   removePatchLink: (rackId: string, linkId: string) => void;
+  /** Attach a drop to a patch link (`undefined` clears it). One drop per
+   *  link: assigning a drop already on another link in the same rack
+   *  moves it here. */
+  assignPatchLinkDrop: (
+    rackId: string,
+    linkId: string,
+    dropId: string | undefined,
+  ) => void;
 
   setActiveTool: (t: ToolId) => void;
   setActiveDevice: (id: string | null) => void;
@@ -2600,6 +2611,28 @@ export const useProjectStore = create<State>()(
                   }
                 : r,
             ),
+            updatedAt: Date.now(),
+          },
+        };
+      }),
+
+    assignPatchLinkDrop: (rackId, linkId, dropId) =>
+      set((s) => {
+        if (!s.project) return s;
+        return {
+          project: {
+            ...s.project,
+            racks: (s.project.racks ?? []).map((r) => {
+              if (r.id !== rackId) return r;
+              const next = (r.patchLinks ?? []).map((l) => {
+                if (dropId !== undefined && l.id !== linkId && l.dropId === dropId) {
+                  return { ...l, dropId: undefined };
+                }
+                if (l.id === linkId) return { ...l, dropId };
+                return l;
+              });
+              return { ...r, patchLinks: next, updatedAt: Date.now() };
+            }),
             updatedAt: Date.now(),
           },
         };
