@@ -49,14 +49,32 @@ Rules:
 - Find EVERY text label on the plan: device labels (e.g. FCAM-001, FSPST-001, WAP-002) AND jack labels (e.g. NJCK-022, LKPD-002). List each label once, exactly as printed. Do not merge labels, do not invent labels, and do not guess a label you cannot read — skip it.
 - For each label give its position as fractions of the image: x from the left edge (0-1), y from the top edge (0-1).
 - Read the legend / key on the plan. For each legend entry, map it to one of these device types: Cam, AP, POS, Speaker, Tablet, Office, ATM, and give the count the legend states for that type. If the legend states no count, use null. If a legend entry does not match any of the seven types, skip it.
-- Return JSON only, no other text:
-{"labels": [{"text": "FCAM-001", "x": 0.42, "y": 0.31}], "key": [{"type": "Cam", "name": "Fixed Camera", "count": 12}]}`;
+- Return JSON only, no other text, in this compact form — one short array per label, so a long plan with hundreds of labels still fits in one answer:
+{"labels": [["FCAM-001", 0.42, 0.31]], "key": [["Cam", "Fixed Camera", 12]]}`;
 
 /** Validate the model's JSON into a VisionResult. Throws on anything
- *  that is not a well-formed result — the caller turns that into a 502. */
+ *  that is not a well-formed result — the caller turns that into a 502.
+ *  Accepts labels/key as compact arrays ([text, x, y] / [type, name, count])
+ *  or as objects ({text, x, y} / {type, name, count}). */
 export function parseVisionResponse(content: unknown, model: string): VisionResult {
-  if (typeof content !== "string") throw new Error("not a string");
-  let text = content.trim();
+  let text: string;
+  if (typeof content === "string") {
+    text = content.trim();
+  } else if (Array.isArray(content)) {
+    // Some providers return the reply as content parts, not one string.
+    text = content
+      .filter(
+        (p): p is { type?: unknown; text?: unknown } =>
+          !!p && typeof p === "object",
+      )
+      .filter((p) => p.type === "text" && typeof p.text === "string")
+      .map((p) => p.text as string)
+      .join("")
+      .trim();
+    if (!text) throw new Error("not a string");
+  } else {
+    throw new Error("not a string");
+  }
   // Some models wrap JSON in a markdown fence even when told not to.
   const fence = /^```(?:json)?\s*([\s\S]*?)```$/i.exec(text);
   if (fence) text = fence[1].trim();
@@ -66,12 +84,20 @@ export function parseVisionResponse(content: unknown, model: string): VisionResu
 
   const labels: VisionLabel[] = [];
   if (!Array.isArray(d.labels)) throw new Error("labels missing");
-  for (const raw of d.labels.slice(0, 500)) {
-    if (!raw || typeof raw !== "object") continue;
-    const r = raw as Record<string, unknown>;
-    const labelText = typeof r.text === "string" ? r.text.trim() : "";
-    const x = typeof r.x === "number" && isFinite(r.x) ? Math.min(1, Math.max(0, r.x)) : NaN;
-    const y = typeof r.y === "number" && isFinite(r.y) ? Math.min(1, Math.max(0, r.y)) : NaN;
+  for (const raw of d.labels.slice(0, 2000)) {
+    let labelText = "";
+    let x = NaN;
+    let y = NaN;
+    if (Array.isArray(raw)) {
+      labelText = typeof raw[0] === "string" ? raw[0].trim() : "";
+      x = typeof raw[1] === "number" && isFinite(raw[1]) ? Math.min(1, Math.max(0, raw[1])) : NaN;
+      y = typeof raw[2] === "number" && isFinite(raw[2]) ? Math.min(1, Math.max(0, raw[2])) : NaN;
+    } else if (raw && typeof raw === "object") {
+      const r = raw as Record<string, unknown>;
+      labelText = typeof r.text === "string" ? r.text.trim() : "";
+      x = typeof r.x === "number" && isFinite(r.x) ? Math.min(1, Math.max(0, r.x)) : NaN;
+      y = typeof r.y === "number" && isFinite(r.y) ? Math.min(1, Math.max(0, r.y)) : NaN;
+    }
     if (!labelText || labelText.length > 40 || !isFinite(x) || !isFinite(y)) continue;
     labels.push({ text: labelText, x, y });
   }
@@ -79,14 +105,25 @@ export function parseVisionResponse(content: unknown, model: string): VisionResu
   const key: VisionKeyEntry[] = [];
   if (Array.isArray(d.key)) {
     for (const raw of d.key) {
-      if (!raw || typeof raw !== "object") continue;
-      const r = raw as Record<string, unknown>;
-      const type = typeof r.type === "string" ? r.type : "";
-      const name = typeof r.name === "string" ? r.name.trim() : "";
-      const count =
-        typeof r.count === "number" && isFinite(r.count) && r.count >= 0
-          ? Math.floor(r.count)
-          : null;
+      let type = "";
+      let name = "";
+      let count: number | null = null;
+      if (Array.isArray(raw)) {
+        type = typeof raw[0] === "string" ? raw[0] : "";
+        name = typeof raw[1] === "string" ? raw[1].trim() : "";
+        count =
+          typeof raw[2] === "number" && isFinite(raw[2]) && raw[2] >= 0
+            ? Math.floor(raw[2])
+            : null;
+      } else if (raw && typeof raw === "object") {
+        const r = raw as Record<string, unknown>;
+        type = typeof r.type === "string" ? r.type : "";
+        name = typeof r.name === "string" ? r.name.trim() : "";
+        count =
+          typeof r.count === "number" && isFinite(r.count) && r.count >= 0
+            ? Math.floor(r.count)
+            : null;
+      }
       if (!(DEVICE_TYPES as readonly string[]).includes(type) || !name) continue;
       key.push({ type, name, count });
     }
@@ -164,7 +201,11 @@ export default {
             },
           ],
           response_format: { type: "json_object" },
-          max_tokens: 4000,
+          // A long plan can carry hundreds of labels; the old 4000-token
+          // cap cut the answer off mid-JSON on dense plans ("unreadable
+          // result"). 16000 covers ~1500 compact labels; the model only
+          // spends what the plan needs.
+          max_tokens: 16000,
           temperature: 0,
         }),
         signal: AbortSignal.timeout(45_000),
@@ -181,11 +222,24 @@ export default {
     } catch {
       return json({ error: "the vision provider returned an unreadable response" }, 502);
     }
-    const content = (data as { choices?: { message?: { content?: unknown } }[] })
-      ?.choices?.[0]?.message?.content;
+    const choice = (data as { choices?: { message?: { content?: unknown }; finish_reason?: unknown }[] })
+      ?.choices?.[0];
+    // Some providers answer 200 with an error object and no choices.
+    const providerError = (data as { error?: { message?: unknown } })?.error?.message;
+    if (typeof providerError === "string" && providerError) {
+      return json({ error: `the vision provider said: ${providerError}` }, 502);
+    }
+    const content = choice?.message?.content;
+    const finishReason = choice?.finish_reason;
     try {
       return json(parseVisionResponse(content, model), 200);
     } catch {
+      if (finishReason === "length") {
+        return json(
+          { error: "the plan has too many labels — the model's answer was cut off. Try again." },
+          502,
+        );
+      }
       return json({ error: "the model returned an unreadable result — try again" }, 502);
     }
   },
