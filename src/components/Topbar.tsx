@@ -15,6 +15,7 @@ import {
   Share2,
   GitBranch,
   Cable,
+  ListOrdered,
 } from "lucide-react";
 import { exportMarkupPdf } from "../export/exportMarkupPdf";
 import { exportBidXlsx, exportBidPdf } from "../export/exportBid";
@@ -222,6 +223,14 @@ export function Topbar() {
             <span className="ml-1 px-1 rounded text-[10px] font-mono bg-white/5">
               {patchCount}
             </span>
+          </button>
+          <button
+            onClick={() => setView("drop-sequences")}
+            className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-all ${view === "drop-sequences" ? "bg-amber-knox/15 text-amber-knox" : "text-ink-300 hover:text-ink-100"}`}
+            title="Type a start label and an end number — the sequence fills itself in"
+          >
+            <ListOrdered className="w-3.5 h-3.5" />
+            Drop Sequences
           </button>
         </div>
       </div>

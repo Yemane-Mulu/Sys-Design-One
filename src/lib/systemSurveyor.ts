@@ -18,7 +18,7 @@
 //   read — before anything is created.
 
 import type * as pdfjsLib from "pdfjs-dist";
-import type { DropService, RackPlacement } from "../store/projectStore";
+import type { RackPlacement } from "../store/projectStore";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -294,38 +294,22 @@ export function buildSurveyorRackPlacements(plan: RackPlan): RackPlacement[] {
 
 // ───────── Explicit upload (its own button, no auto-detection) ─────────
 
-export interface SurveyorImportSource {
-  bytes: Uint8Array;
-  filename: string;
-  /** "pdf" for a report, "image" for a plan picture (PNG/JPG/WebP). */
-  kind: "pdf" | "image";
-  /** Sheets the upload just created — drops stage on the first one. */
-  sheetIds: string[];
-}
-
-/** Image extensions the vision import takes. TIFF is out — browsers
- *  cannot display it in the review overlay or draw it to a canvas. */
-const IMAGE_EXT_RE = /\.(png|jpe?g|webp)$/i;
-
 /**
- * Upload a client's System Surveyor PDF — or a picture of the plan —
- * from the dedicated import button: ingest it as sheets, then open the
- * review modal. The user chose this path, so no detection runs. PDFs
- * go through the table reader first (vision is offered when there is
- * no table); pictures skip straight to the vision read. Dynamic
+ * Upload a client's System Surveyor PDF from the dedicated import
+ * button: ingest it as sheets, then open the review modal. The user
+ * chose this path, so no detection runs. The report's bill of
+ * materials is read with no AI; a layout-only plan has no table to
+ * read, so its drops go in by hand in the Drop Sequences tab. Dynamic
  * imports keep this module importable in non-browser runtimes (tests).
  */
 export async function uploadSurveyorFile(file: File): Promise<void> {
   const { useProjectStore } = await import("../store/projectStore");
   const { ingestFile } = await import("./ingest");
   const st = useProjectStore.getState();
-  const isPdf = /\.pdf$/i.test(file.name);
-  const isImage = IMAGE_EXT_RE.test(file.name);
-  if (!isPdf && !isImage) {
-    st.pushToast("error", "Pick a PDF report or a plan picture (PNG / JPG / WebP).");
+  if (!/\.pdf$/i.test(file.name)) {
+    st.pushToast("error", "Pick a PDF report.");
     return;
   }
-  const kind: "pdf" | "image" = isPdf ? "pdf" : "image";
   let bytes: Uint8Array;
   try {
     bytes = new Uint8Array(await file.arrayBuffer());
@@ -346,159 +330,7 @@ export async function uploadSurveyorFile(file: File): Promise<void> {
   st.setSurveyorImport({
     bytes,
     filename: file.name,
-    kind,
+    kind: "pdf",
     sheetIds: sheets.map((s) => s.id),
   });
-}
-
-// ───────── Vision import (single-page layout PDFs + plan pictures) ─────────
-//
-// Some clients only have the one-page layout — no BOM table for the
-// no-AI parser to read — or just a picture of the plan. For those, the
-// page is rendered to an image (or the picture is used as-is) and sent
-// to the vision Worker (OpenRouter key lives there as a secret).
-// The model only READS labels and the legend; it classifies nothing.
-// The user assigns each label a device type in the review popup, the
-// counts are checked against the legend there, and drops are saved
-// under the plan labels exactly as printed — no renumbering.
-
-/** Device types the user assigns in the review popup — his list, exactly. */
-export const VISION_DEVICE_TYPES = [
-  "Cam",
-  "AP",
-  "POS",
-  "Speaker",
-  "Tablet",
-  "Office",
-  "ATM",
-] as const;
-export type VisionDeviceType = (typeof VISION_DEVICE_TYPES)[number];
-
-/** One label the model read off the plan. */
-export interface VisionLabel {
-  /** Label exactly as printed, e.g. "FCAM-001", "NJCK-022". */
-  text: string;
-  /** Position as fractions of the page image, origin top-left. */
-  x: number;
-  y: number;
-}
-
-/** One legend entry, mapped to a device type by the model. */
-export interface VisionKeyEntry {
-  type: VisionDeviceType;
-  /** Legend entry name as printed, e.g. "Fixed Camera". */
-  name: string;
-  /** Count the legend states for this type, null when it states none. */
-  count: number | null;
-}
-
-export interface VisionResult {
-  labels: VisionLabel[];
-  key: VisionKeyEntry[];
-  model: string;
-}
-
-/** Drop service for an assigned device type — cameras and APs ride PoE. */
-export function visionServiceFor(type: VisionDeviceType): DropService {
-  if (type === "Cam") return "camera";
-  if (type === "AP" || type === "Speaker") return "poe";
-  return "data";
-}
-
-/** Render the first page of the uploaded PDF to a PNG data URL for the
- *  vision call and the review overlay. Dynamic pdf.js import, same as
- *  extractSurveyorText. Pass a fresh copy of the bytes — pdf.js may
- *  detach the ArrayBuffer it is given. */
-export async function renderSurveyorPageImage(
-  bytes: Uint8Array,
-): Promise<{ dataUrl: string; width: number; height: number }> {
-  const { getCachedDoc, renderPageToCanvas } = await import("./pdfjs");
-  const doc: pdfjsLib.PDFDocumentProxy = await getCachedDoc(bytes);
-  const page = await doc.getPage(1);
-  const viewport = page.getViewport({ scale: 1 });
-  const scale = Math.min(3, 2000 / viewport.width);
-  const { canvas } = await renderPageToCanvas(page, scale);
-  return { dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height };
-}
-
-/** MIME type for an uploaded plan picture, from its filename. */
-function mimeForFilename(filename: string): string {
-  if (/\.png$/i.test(filename)) return "image/png";
-  if (/\.jpe?g$/i.test(filename)) return "image/jpeg";
-  if (/\.webp$/i.test(filename)) return "image/webp";
-  return "image/png";
-}
-
-/** Uploaded picture bytes as a data URL, for the vision call and the
- *  review overlay. Pure bytes-to-base64 — no DOM, safe in tests. */
-export function imageBytesToDataUrl(bytes: Uint8Array, filename: string): string {
-  let binary = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return `data:${mimeForFilename(filename)};base64,${btoa(binary)}`;
-}
-
-/** Shrink a plan picture to at most 2000px wide (same cap as the PDF
- *  render) so a phone photo stays under the Worker's size limit and
- *  the token cost stays near a cent. Small pictures pass through
- *  untouched. Browser-only — canvas. */
-export async function downscaleImageDataUrl(
-  dataUrl: string,
-  maxWidth = 2000,
-): Promise<string> {
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const el = new Image();
-    el.onload = () => resolve(el);
-    el.onerror = () =>
-      reject(new Error("Could not read this picture — try a PNG or JPG."));
-    el.src = dataUrl;
-  });
-  if (img.naturalWidth <= maxWidth) return dataUrl;
-  const scale = maxWidth / img.naturalWidth;
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(img.naturalWidth * scale);
-  canvas.height = Math.round(img.naturalHeight * scale);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return dataUrl;
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/png");
-}
-
-/** Call the vision proxy (same-origin Worker). Throws an Error whose
- *  message is safe to show in the modal. */
-export async function analyzeSurveyorPage(imageDataUrl: string): Promise<VisionResult> {
-  const res = await fetch("/api/surveyor-vision", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: imageDataUrl }),
-  });
-  let data: { error?: string } | null = null;
-  try {
-    data = (await res.json()) as { error?: string };
-  } catch {
-    // Fall through to the error below.
-  }
-  if (!res.ok) {
-    throw new Error(data?.error ?? `Vision service returned ${res.status}`);
-  }
-  return data as VisionResult;
-}
-
-/** Rack sizing from vision assignments: every assigned drop is a network
- *  port; cameras drive the NVR. Reuses the same planner as the table
- *  import so both paths size racks the same way. */
-export function visionProposalForAssignments(types: VisionDeviceType[]): SurveyorProposal {
-  const cameras = types.filter((t) => t === "Cam").length;
-  const aps = types.filter((t) => t === "AP").length;
-  return {
-    isSurveyor: true,
-    items: [],
-    cameras,
-    drops: types.length - cameras - aps,
-    aps,
-    networkPorts: types.length,
-    unmatchedRows: 0,
-  };
 }

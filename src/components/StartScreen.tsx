@@ -66,8 +66,7 @@ export function StartScreen() {
 
   // Dedicated System Surveyor import — its own card, no auto-detection
   // on normal uploads. Starts a project from the report, then reads its
-  // bill of materials (no AI) into drops + a rack plan; a plan picture
-  // goes straight to the AI read.
+  // bill of materials (no AI) into drops + a rack plan.
   const onPickSurveyorFile = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setBusy(true);
@@ -285,16 +284,15 @@ export function StartScreen() {
             <FileDown className="w-6 h-6 text-amber-knox mb-3" />
             <div className="font-semibold text-ink-50 mb-1">Import System Surveyor</div>
             <div className="text-sm text-ink-300">
-              Upload a client&apos;s System Surveyor report — or a picture of
-              the plan — drops and a rack plan are read from its bill of
-              materials, no AI.
+              Upload a client&apos;s System Surveyor report — drops and a
+              rack plan are read from its bill of materials, no AI.
             </div>
             <div className="mt-2 text-[11px] text-ink-400 font-mono leading-snug">
-              PDF report with a Bill of Materials · PNG / JPG / WebP picture
+              PDF report with a Bill of Materials
             </div>
             <input
               type="file"
-              accept=".pdf,.png,.jpg,.jpeg,.webp"
+              accept=".pdf"
               className="hidden"
               onChange={(e) => onPickSurveyorFile(e.target.files)}
             />

@@ -13,6 +13,7 @@ import { saveProject } from "../persist/db";
 import { RackBuilder } from "../rack/RackBuilder";
 import { DiagramBuilder } from "../diagrams/DiagramBuilder";
 import { PatchPanelBuilder } from "../rack/PatchPanelBuilder";
+import { DropSequenceBuilder } from "../rack/DropSequenceBuilder";
 import { SystemSurveyorImportModal } from "./SystemSurveyorImportModal";
 import { useFlowHintClass } from "../hooks/useFlowHints";
 import {
@@ -75,6 +76,8 @@ export function Workspace() {
         <DiagramBuilder />
       ) : view === "patch-panels" ? (
         <PatchPanelBuilder />
+      ) : view === "drop-sequences" ? (
+        <DropSequenceBuilder />
       ) : (
         <div className="flex-1 flex overflow-hidden">
           <LeftRail className="!hidden md:!flex" />

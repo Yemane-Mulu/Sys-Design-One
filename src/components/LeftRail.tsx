@@ -97,7 +97,7 @@ export function LeftRail({ className = "" }: { className?: string }) {
 
   // Dedicated System Surveyor import — its own button, no auto-detection
   // on normal uploads. Reads the report's bill of materials (no AI) into
-  // drops + a rack plan; a plan picture goes straight to the AI read.
+  // drops + a rack plan.
   const onPickSurveyorFile = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     await uploadSurveyorFile(files[0]);
@@ -160,13 +160,13 @@ export function LeftRail({ className = "" }: { className?: string }) {
             </label>
             <label
               className="btn w-full justify-center cursor-pointer"
-              title="Upload a client's System Surveyor PDF report or a picture of the plan — drops and a rack plan are read from its bill of materials, no AI; a picture goes straight to the AI read."
+              title="Upload a client's System Surveyor PDF report — drops and a rack plan are read from its bill of materials, no AI."
             >
               <FileDown className="w-4 h-4" />
               Import System Surveyor
               <input
                 type="file"
-                accept=".pdf,.png,.jpg,.jpeg,.webp"
+                accept=".pdf"
                 className="hidden"
                 onChange={(e) => onPickSurveyorFile(e.target.files)}
               />
