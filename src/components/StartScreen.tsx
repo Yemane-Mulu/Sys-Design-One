@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Wordmark, Monogram } from "../brand/Wordmark";
 import { useProjectStore } from "../store/projectStore";
 import { ingestFile } from "../lib/ingest";
+import { maybeOfferSurveyorImport } from "../lib/systemSurveyor";
 import { SUPPORTED_ACCEPT, SUPPORTED_HINT } from "../lib/sheetSource";
 import { importProjectFile } from "../lib/projectFile";
 import { enqueueIngest } from "../lib/ingestQueue";
@@ -106,6 +107,12 @@ export function StartScreen() {
                 needsCalibration++;
               }
             }
+            // A client plan from System Surveyor carries a device table —
+            // offer the no-AI import (drops + rack plan) when one is found.
+            void maybeOfferSurveyorImport(
+              file,
+              sheets.map((s) => s.id),
+            );
             importedSheets += sheets.length;
             done++;
             setProgress({ done });

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useProjectStore, type MarkupKind } from "../store/projectStore";
 import { ingestFile } from "../lib/ingest";
+import { maybeOfferSurveyorImport } from "../lib/systemSurveyor";
 import { SUPPORTED_ACCEPT, SUPPORTED_HINT } from "../lib/sheetSource";
 import { importProjectFile } from "../lib/projectFile";
 import { enqueueIngest } from "../lib/ingestQueue";
@@ -64,6 +65,12 @@ export function LeftRail({ className = "" }: { className?: string }) {
                 needsCalibration++;
               }
             }
+            // A client plan from System Surveyor carries a device table —
+            // offer the no-AI import (drops + rack plan) when one is found.
+            void maybeOfferSurveyorImport(
+              f,
+              sheets.map((s) => s.id),
+            );
             added += sheets.length;
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);

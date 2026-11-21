@@ -1336,6 +1336,23 @@ interface State {
    *  modal renders an HTML ghost of the page so the user can see what
    *  the export will look like before they commit. `null` when closed. */
   pagePreview: "cover" | "bom" | null;
+  /** A just-uploaded PDF that looks like a System Surveyor report, held
+   *  for the import review modal (no-AI BOM parse → drops + rack plan).
+   *  `null` when no import is pending. Bytes live here only, never in
+   *  the persisted project. */
+  surveyorImport: {
+    bytes: Uint8Array;
+    filename: string;
+    /** Sheets the upload just created — drops stage on the first one. */
+    sheetIds: string[];
+  } | null;
+  setSurveyorImport: (
+    v: {
+      bytes: Uint8Array;
+      filename: string;
+      sheetIds: string[];
+    } | null,
+  ) => void;
   /** Sticky settings for the freehand tool — survive tool switches so the
    *  user doesn't have to re-pick color and thickness every time they
    *  drop into freehand mode. */
@@ -1752,6 +1769,7 @@ export const useProjectStore = create<State>()(
     coverageVisible: true,
     brandPreviewEnabled: true,
     pagePreview: null,
+    surveyorImport: null,
     freehandColor: "#F4B740",
     freehandThickness: 2,
     freehandErasing: false,
@@ -3049,6 +3067,7 @@ export const useProjectStore = create<State>()(
 
     openPagePreview: (which) => set({ pagePreview: which }),
     closePagePreview: () => set({ pagePreview: null }),
+    setSurveyorImport: (v) => set({ surveyorImport: v }),
 
     addMarkup: (m) =>
       set((s) => {

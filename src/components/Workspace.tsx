@@ -12,6 +12,7 @@ import { CalibrationDialog } from "./CalibrationDialog";
 import { saveProject } from "../persist/db";
 import { RackBuilder } from "../rack/RackBuilder";
 import { DiagramBuilder } from "../diagrams/DiagramBuilder";
+import { SystemSurveyorImportModal } from "./SystemSurveyorImportModal";
 import { useFlowHintClass } from "../hooks/useFlowHints";
 import {
   Calculator,
@@ -66,6 +67,7 @@ export function Workspace() {
   return (
     <div className="h-full w-full flex flex-col">
       <Topbar />
+      <SystemSurveyorImportModal />
       {view === "racks" ? (
         <RackBuilder />
       ) : view === "diagrams" ? (
