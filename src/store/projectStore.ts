@@ -159,6 +159,26 @@ export interface RackPlacement {
   costOverride?: number;
   /** Internal notes (not exported) */
   notes?: string;
+  /** Width the device occupies: full 19" width, or one half of the row. */
+  width?: "full" | "half";
+  /** When width is "half", which side of the row the device sits on. */
+  side?: "left" | "right";
+  /** Per-placement U-height override (e.g. NVR 3–5U). Defaults to the catalog uHeight. */
+  uHeightOverride?: number;
+}
+
+/** One patched port: patch-panel port -> switch port, scoped to a rack.
+ *  A panel port patches to exactly one switch port and vice versa. */
+export interface RackPatchLink {
+  id: string;
+  /** placement id of the patch panel */
+  fromPlacementId: string;
+  /** panel port number (1-based) */
+  fromPort: number;
+  /** placement id of the switch */
+  toPlacementId: string;
+  /** switch port number (1-based) */
+  toPort: number;
 }
 
 export interface Rack {
@@ -173,6 +193,8 @@ export interface Rack {
   /** Optional sheet ID this rack is logically associated with */
   associatedSheetId?: string;
   placements: RackPlacement[];
+  /** Patch panel -> switch port links, printed on the elevation. */
+  patchLinks?: RackPatchLink[];
   /** Created/updated timestamps for sorting */
   createdAt: number;
   updatedAt: number;
@@ -1430,6 +1452,9 @@ interface State {
     patch: Partial<RackPlacement>,
   ) => void;
   removePlacement: (rackId: string, placementId: string) => void;
+  addPatchLink: (rackId: string, link: RackPatchLink) => void;
+  addPatchLinks: (rackId: string, links: RackPatchLink[]) => void;
+  removePatchLink: (rackId: string, linkId: string) => void;
 
   setActiveTool: (t: ToolId) => void;
   setActiveDevice: (id: string | null) => void;
@@ -2373,6 +2398,7 @@ export const useProjectStore = create<State>()(
           location: rack?.location,
           associatedSheetId: rack?.associatedSheetId,
           placements: rack?.placements ?? [],
+          patchLinks: rack?.patchLinks ?? [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
@@ -2462,6 +2488,93 @@ export const useProjectStore = create<State>()(
                 ? {
                     ...r,
                     placements: r.placements.filter((p) => p.id !== placementId),
+                    // Links touching a removed device are gone with it.
+                    patchLinks: (r.patchLinks ?? []).filter(
+                      (l) =>
+                        l.fromPlacementId !== placementId &&
+                        l.toPlacementId !== placementId,
+                    ),
+                    updatedAt: Date.now(),
+                  }
+                : r,
+            ),
+            updatedAt: Date.now(),
+          },
+        };
+      }),
+
+    // A panel port patches to exactly one switch port and vice versa, so
+    // adding a link drops any existing link that shares either endpoint.
+    addPatchLink: (rackId, link) =>
+      set((s) => {
+        if (!s.project) return s;
+        return {
+          project: {
+            ...s.project,
+            racks: (s.project.racks ?? []).map((r) =>
+              r.id === rackId
+                ? {
+                    ...r,
+                    patchLinks: [
+                      ...(r.patchLinks ?? []).filter(
+                        (l) =>
+                          !(
+                            (l.fromPlacementId === link.fromPlacementId &&
+                              l.fromPort === link.fromPort) ||
+                            (l.toPlacementId === link.toPlacementId &&
+                              l.toPort === link.toPort)
+                          ),
+                      ),
+                      link,
+                    ],
+                    updatedAt: Date.now(),
+                  }
+                : r,
+            ),
+            updatedAt: Date.now(),
+          },
+        };
+      }),
+
+    addPatchLinks: (rackId, links) =>
+      set((s) => {
+        if (!s.project) return s;
+        return {
+          project: {
+            ...s.project,
+            racks: (s.project.racks ?? []).map((r) => {
+              if (r.id !== rackId) return r;
+              let next = [...(r.patchLinks ?? [])];
+              for (const link of links) {
+                next = next.filter(
+                  (l) =>
+                    !(
+                      (l.fromPlacementId === link.fromPlacementId &&
+                        l.fromPort === link.fromPort) ||
+                      (l.toPlacementId === link.toPlacementId &&
+                        l.toPort === link.toPort)
+                    ),
+                );
+                next.push(link);
+              }
+              return { ...r, patchLinks: next, updatedAt: Date.now() };
+            }),
+            updatedAt: Date.now(),
+          },
+        };
+      }),
+
+    removePatchLink: (rackId, linkId) =>
+      set((s) => {
+        if (!s.project) return s;
+        return {
+          project: {
+            ...s.project,
+            racks: (s.project.racks ?? []).map((r) =>
+              r.id === rackId
+                ? {
+                    ...r,
+                    patchLinks: (r.patchLinks ?? []).filter((l) => l.id !== linkId),
                     updatedAt: Date.now(),
                   }
                 : r,

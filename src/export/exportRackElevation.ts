@@ -12,6 +12,14 @@ import {
 } from "../data/rackDevices";
 import { loadBrandFonts, hex, safeText, type BrandFonts } from "./titleBlockRenderer";
 import { resolveBranding, type BrandingConfig } from "../lib/branding";
+import {
+  groupPatchLinks,
+  occupiedUSlots,
+  patchGroupText,
+  placementDisplayName,
+  placementUHeight,
+  placementWidth,
+} from "../rack/rackUtils";
 
 const KN_MID = hex("#0B1220");
 const KN_INK = hex("#F5F7FA");
@@ -204,9 +212,17 @@ function drawElevation(
   for (const p of rack.placements) {
     const dev = rackDevicesById[p.deviceId];
     if (!dev) continue;
-    const deviceTop = rackBottom + (p.uSlot + dev.uHeight - 1) * uPx;
+    const effH = placementUHeight(p, dev);
+    const deviceTop = rackBottom + (p.uSlot + effH - 1) * uPx;
     const deviceBottom = rackBottom + (p.uSlot - 1) * uPx;
-    drawFaceplate(page, fonts, dev, p.label, interiorLeft, deviceBottom, interiorW, deviceTop - deviceBottom, ACCENT);
+    // Half-width devices take one side of the interior.
+    const w = placementWidth(p);
+    const faceX =
+      w === "half"
+        ? interiorLeft + (p.side === "right" ? interiorW / 2 : 0)
+        : interiorLeft;
+    const faceW = w === "half" ? interiorW / 2 : interiorW;
+    drawFaceplate(page, fonts, dev, p.label, faceX, deviceBottom, faceW, deviceTop - deviceBottom, ACCENT);
   }
 
   // ─── Schedule + totals ───
@@ -332,33 +348,6 @@ function drawFaceplate(
       height: h * 0.64,
       color: stripeColor,
     });
-    const fontSize = Math.max(5, h * 0.22);
-    page.drawText(f.brand.text, {
-      x: bx + 3,
-      y: y + h * 0.32,
-      size: fontSize,
-      font: fonts.bold,
-      color: stripeColor,
-    });
-  }
-
-  // Texts
-  for (const t of f.texts ?? []) {
-    const tx = x + (t.x / 100) * w;
-    const yPct = (t.y ?? 30) / 100;
-    const ty = y + h - h * yPct - 4;
-    const sizeMap = { xs: 4.5, sm: 5.5, md: 6.5, lg: 7.5 } as const;
-    const sz = sizeMap[t.size ?? "sm"];
-    const font = t.weight === "bold" ? fonts.bold : fonts.regular;
-    // Faceplate text colors — `amber` refers to the brand accent (so the
-    // text follows the user's color), the other tokens are neutral.
-    const color =
-      t.color === "amber"
-        ? accent
-        : t.color === "muted"
-        ? KN_INK_400
-        : KN_INK;
-    page.drawText(t.text, { x: tx, y: ty, size: sz, font, color });
   }
 
   // Bays
@@ -431,6 +420,83 @@ function drawFaceplate(
         font: fonts.regular,
         color: KN_INK_300,
       });
+    }
+  }
+
+  // Brand + model on ONE line — the two used to print on top of each other
+  // in 1U rows. Drawn after the bays so a bay never paints over it (the
+  // generic NVR's HDD bay sits in this band). The line sits low on the
+  // faceplate, clear of the port rows above it, and truncates to leave room
+  // for the tag pill on the right.
+  {
+    const lineY = y + h * 0.32;
+    let lineX = x + 16; // clear of the mounting screws
+    if (f.brand) {
+      const bx = x + (f.brand.x / 100) * w;
+      lineX = bx + 3;
+    }
+    let lineMaxW = x + w - 8 - lineX;
+    if (overlayLabel) {
+      const sz = Math.max(4, h * 0.18);
+      const tw = fonts.bold.widthOfTextAtSize(overlayLabel.toUpperCase(), sz);
+      lineMaxW = x + w - tw - 12 - lineX;
+    }
+    const sizeMap = { xs: 4.5, sm: 5.5, md: 6.5, lg: 7.5 } as const;
+    const segments: {
+      text: string;
+      size: number;
+      font: BrandFonts["bold"];
+      color: ReturnType<typeof hex>;
+    }[] = [];
+    if (f.brand) {
+      segments.push({
+        text: f.brand.text,
+        size: Math.max(5, h * 0.22),
+        font: fonts.bold,
+        color: f.brand.accent ? hex(f.brand.accent) : accent,
+      });
+    }
+    for (const t of f.texts ?? []) {
+      segments.push({
+        text: t.text,
+        size: sizeMap[t.size ?? "sm"],
+        font: t.weight === "bold" ? fonts.bold : fonts.regular,
+        // Faceplate text colors — `amber` refers to the brand accent (so
+        // the text follows the user's color), the other tokens are neutral.
+        color:
+          t.color === "amber"
+            ? accent
+            : t.color === "muted"
+              ? KN_INK_400
+              : KN_INK,
+      });
+    }
+    if (segments.length > 0 && lineMaxW > 10) {
+      const joined = segments.map((s) => s.text).join(" ");
+      const totalW = segments.reduce(
+        (acc, s, i) =>
+          acc +
+          s.font.widthOfTextAtSize(s.text, s.size) +
+          (i > 0 ? s.font.widthOfTextAtSize(" ", s.size) : 0),
+        0,
+      );
+      if (totalW <= lineMaxW) {
+        let cx = lineX;
+        segments.forEach((s, i) => {
+          if (i > 0) cx += s.font.widthOfTextAtSize(" ", s.size);
+          page.drawText(s.text, { x: cx, y: lineY, size: s.size, font: s.font, color: s.color });
+          cx += s.font.widthOfTextAtSize(s.text, s.size);
+        });
+      } else {
+        // Rare overflow (very long model in a 1U row): one truncated line.
+        page.drawText(fitText(fonts.regular, joined, lineMaxW, segments[0].size), {
+          x: lineX,
+          y: lineY,
+          size: segments[0].size,
+          font: fonts.regular,
+          color: KN_INK,
+        });
+      }
     }
   }
 
@@ -558,9 +624,13 @@ function drawSchedule(
     color: KN_MID,
   });
 
+  // Column widths rebalanced: the TAG column was 42pt and every value was
+  // cut to 22 / 18 / 14 characters. Cells now truncate to fit their
+  // column width instead of a fixed character count.
+  const colW = [30, 94, 72, w - 212];
   let cursorY = y + h - 32;
   // Column header
-  drawCols(page, fonts, x + 8, cursorY, ["U", "DEVICE", "MFG·MODEL", "TAG"], [22, 130, 80, w - 250]);
+  drawCols(page, fonts, x + 8, cursorY, ["U", "DEVICE", "MFG·MODEL", "TAG"], colW);
   cursorY -= 9;
   page.drawLine({
     start: { x: x + 6, y: cursorY + 6 },
@@ -569,9 +639,35 @@ function drawSchedule(
     color: KN_INK_500,
   });
 
+  // Patch groups print under the totals; reserve room for them at the
+  // bottom of the panel so rows never run into the totals box. A group is
+  // one line per panel -> switch pair, wrapped to fit the panel width.
+  const patchGroups = groupPatchLinks(rack.patchLinks ?? []);
+  const patchLines: string[] = [];
+  for (const g of patchGroups) {
+    const fromP = rack.placements.find((p) => p.id === g.fromPlacementId);
+    const toP = rack.placements.find((p) => p.id === g.toPlacementId);
+    if (!fromP || !toP) continue;
+    const fromDev = rackDevicesById[fromP.deviceId];
+    const toDev = rackDevicesById[toP.deviceId];
+    if (!fromDev || !toDev) continue;
+    patchLines.push(
+      ...wrapText(
+        fonts.regular,
+        patchGroupText(
+          g,
+          placementDisplayName(fromP, fromDev),
+          placementDisplayName(toP, toDev),
+        ),
+        w - 16,
+      ),
+    );
+  }
+  const reserve =
+    100 + (patchLines.length > 0 ? 14 + patchLines.length * 11 + 8 : 0);
+
   let totalW = 0;
   let totalLb = 0;
-  let totalUsed = 0;
   let totalCost = 0;
 
   // Sort top-down
@@ -579,26 +675,35 @@ function drawSchedule(
   for (const p of sorted) {
     const d = rackDevicesById[p.deviceId];
     if (!d) continue;
-    if (cursorY < y + 100) {
+    if (cursorY < y + reserve) {
       page.drawText("…", { x: x + 8, y: cursorY, size: 8, font: fonts.bold, color: KN_INK_400 });
       break;
     }
+    const effH = placementUHeight(p, d);
     drawCols(page, fonts, x + 8, cursorY, [
-      `U${p.uSlot}${d.uHeight > 1 ? `–${p.uSlot + d.uHeight - 1}` : ""}`,
-      truncate(d.label, 22),
-      truncate(`${d.manufacturer} ${d.model}`, 18),
-      truncate(p.label ?? "", 14),
-    ], [22, 130, 80, w - 250]);
+      `U${p.uSlot}${effH > 1 ? `–${p.uSlot + effH - 1}` : ""}`,
+      fitText(fonts.regular, d.label, colW[1] - 4),
+      fitText(
+        fonts.regular,
+        `${d.manufacturer}${d.model ? ` ${d.model}` : ""}`,
+        colW[2] - 4,
+      ),
+      fitText(fonts.regular, p.label ?? "", colW[3] - 4),
+    ], colW);
     cursorY -= 11;
     totalW += d.powerWatts;
     totalLb += d.weightLbs;
-    totalUsed += d.uHeight;
     totalCost += p.costOverride ?? d.defaultCost;
   }
 
-  // Totals box pinned to the bottom of the panel
-  const tbY = y + 8;
+  // "U Used" counts each occupied U once — two half-width devices sharing
+  // a U row still only use that U once.
+  const totalUsed = occupiedUSlots(rack).size;
+
+  // Totals box sits directly under the last schedule row, not pinned to
+  // the bottom of the panel.
   const tbH = 88;
+  const tbY = cursorY - 6 - tbH;
   page.drawRectangle({
     x: x + 6,
     y: tbY,
@@ -636,6 +741,33 @@ function drawSchedule(
     page.drawText(v, { x: x + w - 12 - vw, y: ly, size: 8, font: fonts.bold, color: KN_INK });
     ly -= 14;
   }
+
+  // Patching — one line per panel -> switch pair, only the patched ports.
+  if (patchLines.length > 0) {
+    let py = tbY - 12;
+    page.drawText("PATCHING", {
+      x: x + 8,
+      y: py,
+      size: 8,
+      font: fonts.bold,
+      color: accent,
+    });
+    py -= 11;
+    for (const line of patchLines) {
+      if (py < y + 10) {
+        page.drawText("…", { x: x + 8, y: py, size: 8, font: fonts.bold, color: KN_INK_400 });
+        break;
+      }
+      page.drawText(safeText(line), {
+        x: x + 8,
+        y: py,
+        size: 7,
+        font: fonts.regular,
+        color: KN_INK,
+      });
+      py -= 11;
+    }
+  }
 }
 
 function drawCols(
@@ -659,9 +791,47 @@ function drawCols(
   });
 }
 
-function truncate(s: string, n: number) {
-  if (!s) return "";
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+/** Truncate text to fit a pixel width (measured, not a character count). */
+function fitText(
+  font: BrandFonts["regular"],
+  text: string,
+  maxWidth: number,
+  size = 7,
+): string {
+  if (!text) return "";
+  if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
+  const ell = "…";
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (font.widthOfTextAtSize(text.slice(0, mid) + ell, size) <= maxWidth) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo > 0 ? text.slice(0, lo) + ell : ell;
+}
+
+/** Greedy word-wrap to a pixel width; returns one string per visual line. */
+function wrapText(
+  font: BrandFonts["regular"],
+  text: string,
+  maxWidth: number,
+  size = 7,
+): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let cur = "";
+  for (const word of words) {
+    const next = cur ? `${cur} ${word}` : word;
+    if (font.widthOfTextAtSize(next, size) <= maxWidth) {
+      cur = next;
+    } else {
+      if (cur) lines.push(cur);
+      cur = word;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
 }
 
 function usd(n: number) {

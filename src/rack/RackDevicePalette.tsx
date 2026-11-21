@@ -30,8 +30,11 @@ export function RackDevicePalette() {
   const [filter, setFilter] = useState<RackCategory | "all">("all");
   const [q, setQ] = useState("");
 
+  const showDefaultsSection = filter === "all" && !q;
+  const defaults = useMemo(() => rackDevices.filter((d) => d.isDefault), []);
+
   const list = useMemo(() => {
-    return rackDevices.filter((d) => {
+    const base = rackDevices.filter((d) => {
       if (filter !== "all" && d.category !== filter) return false;
       if (q) {
         const lower = q.toLowerCase();
@@ -44,7 +47,10 @@ export function RackDevicePalette() {
       }
       return true;
     });
-  }, [filter, q]);
+    // With no filter/search the blank defaults sit pinned at the top and
+    // are left out of the main list so they don't show twice.
+    return showDefaultsSection ? base.filter((d) => !d.isDefault) : base;
+  }, [filter, q, showDefaultsSection]);
 
   return (
     <aside className="w-80 shrink-0 border-r border-white/5 bg-ink-800/60 backdrop-blur-md flex flex-col">
@@ -76,6 +82,19 @@ export function RackDevicePalette() {
         ))}
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
+        {showDefaultsSection && (
+          <>
+            <div className="px-1 pt-1 text-[10px] font-semibold tracking-wider text-amber-knox uppercase">
+              Defaults — blank, no brand
+            </div>
+            {defaults.map((d) => (
+              <PaletteItem key={d.id} device={d} />
+            ))}
+            <div className="px-1 pt-2 text-[10px] font-semibold tracking-wider text-ink-400 uppercase">
+              All devices
+            </div>
+          </>
+        )}
         {list.map((d) => (
           <PaletteItem key={d.id} device={d} />
         ))}
@@ -120,7 +139,7 @@ function PaletteItem({ device }: { device: RackDeviceType }) {
         e.dataTransfer.effectAllowed = "copy";
       }}
       className="rounded-md border border-white/5 bg-white/[0.02] hover:bg-white/5 hover:border-white/15 transition-colors cursor-grab active:cursor-grabbing overflow-hidden"
-      title={`Drag to place · ${device.manufacturer} ${device.model}`}
+      title={`Drag to place · ${device.manufacturer}${device.model ? ` ${device.model}` : ""}`}
     >
       <div className="px-2 pt-2 pb-1 flex items-center justify-between">
         <div className="min-w-0 flex-1">
@@ -128,7 +147,8 @@ function PaletteItem({ device }: { device: RackDeviceType }) {
             {device.label}
           </div>
           <div className="text-[10px] font-mono text-ink-400 truncate">
-            {device.manufacturer} · {device.model}
+            {device.manufacturer}
+            {device.model ? ` · ${device.model}` : ""}
           </div>
         </div>
         <div className="flex flex-col items-end ml-2 shrink-0">
@@ -153,7 +173,7 @@ function PaletteItem({ device }: { device: RackDeviceType }) {
         {device.powerWatts > 0 && (
           <Spec>{device.powerWatts}W</Spec>
         )}
-        <Spec>{device.weightLbs}lb</Spec>
+        {device.weightLbs > 0 && <Spec>{device.weightLbs}lb</Spec>}
         {device.frontPorts ? <Spec>{device.frontPorts} ports</Spec> : null}
       </div>
     </div>

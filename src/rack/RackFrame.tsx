@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   useProjectStore,
   type Rack,
@@ -6,6 +6,12 @@ import {
 } from "../store/projectStore";
 import { rackDevicesById } from "../data/rackDevices";
 import { RackDeviceFaceplate } from "./RackDeviceFaceplate";
+import {
+  canFitAt,
+  findNearestFit,
+  placementUHeight,
+  placementWidth,
+} from "./rackUtils";
 import { Trash2, GripVertical } from "lucide-react";
 
 interface Props {
@@ -40,19 +46,6 @@ export function RackFrame({ rack, uPx = 28, selectedId, onSelect }: Props) {
   const usableHeight = rack.uHeight * uPx;
   const innerWidth = 600; // logical width inside rails
 
-  // Build U-occupancy map for collision detection / rendering empty slots
-  const occupancy = useMemo(() => {
-    const map = new Map<number, RackPlacement>();
-    for (const p of rack.placements) {
-      const dev = rackDevicesById[p.deviceId];
-      if (!dev) continue;
-      for (let u = p.uSlot; u < p.uSlot + dev.uHeight; u++) {
-        map.set(u, p);
-      }
-    }
-    return map;
-  }, [rack.placements]);
-
   function uFromClientY(clientY: number): number | null {
     if (!ref.current) return null;
     const rect = ref.current.getBoundingClientRect();
@@ -62,15 +55,6 @@ export function RackFrame({ rack, uPx = 28, selectedId, onSelect }: Props) {
     const fromTop = Math.floor(yWithin / uPx);
     const u = rack.uHeight - fromTop;
     return Math.max(1, Math.min(rack.uHeight, u));
-  }
-
-  function canFit(uSlot: number, uHeight: number, ignorePlacementId?: string): boolean {
-    if (uSlot < 1 || uSlot + uHeight - 1 > rack.uHeight) return false;
-    for (let u = uSlot; u < uSlot + uHeight; u++) {
-      const occ = occupancy.get(u);
-      if (occ && occ.id !== ignorePlacementId) return false;
-    }
-    return true;
   }
 
   function onDragOver(e: React.DragEvent) {
@@ -98,9 +82,19 @@ export function RackFrame({ rack, uPx = 28, selectedId, onSelect }: Props) {
       if (!placement) return;
       const dev = rackDevicesById[placement.deviceId];
       if (!dev) return;
-      // anchor at top of dragged height
-      const desiredSlot = targetU - dev.uHeight + 1;
-      if (canFit(desiredSlot, dev.uHeight, placement.id)) {
+      // anchor at top of dragged height (per-placement override applies)
+      const effH = placementUHeight(placement, dev);
+      const desiredSlot = targetU - effH + 1;
+      if (
+        canFitAt(
+          rack,
+          desiredSlot,
+          effH,
+          placementWidth(placement),
+          placement.side ?? "left",
+          placement.id,
+        )
+      ) {
         updatePlacement(rack.id, placement.id, { uSlot: desiredSlot });
       }
       return;
@@ -112,8 +106,8 @@ export function RackFrame({ rack, uPx = 28, selectedId, onSelect }: Props) {
       const desiredSlot = targetU - dev.uHeight + 1;
       // Find nearest fitting slot
       let slot = desiredSlot;
-      if (!canFit(slot, dev.uHeight)) {
-        slot = findNearestFit(slot, dev.uHeight, occupancy, rack.uHeight);
+      if (!canFitAt(rack, slot, dev.uHeight, "full", "left")) {
+        slot = findNearestFit(rack, slot, dev.uHeight, "full", "left");
         if (slot < 0) return; // no room
       }
       addPlacement(rack.id, {
@@ -209,13 +203,16 @@ export function RackFrame({ rack, uPx = 28, selectedId, onSelect }: Props) {
           {rack.placements.map((p) => {
             const dev = rackDevicesById[p.deviceId];
             if (!dev) return null;
-            const top = (rack.uHeight - (p.uSlot + dev.uHeight - 1)) * uPx;
+            const effH = placementUHeight(p, dev);
+            const top = (rack.uHeight - (p.uSlot + effH - 1)) * uPx;
             const sel = selectedId === p.id;
             return (
               <PlacedDevice
                 key={p.id}
                 placement={p}
-                deviceUHeight={dev.uHeight}
+                deviceUHeight={effH}
+                width={placementWidth(p)}
+                side={p.side ?? "left"}
                 uPx={uPx}
                 top={top}
                 selected={sel}
@@ -259,24 +256,6 @@ export function RackFrame({ rack, uPx = 28, selectedId, onSelect }: Props) {
 }
 
 // ───── helpers ─────
-
-function findNearestFit(
-  desired: number,
-  uHeight: number,
-  occ: Map<number, RackPlacement>,
-  rackU: number,
-): number {
-  const fits = (s: number) => {
-    if (s < 1 || s + uHeight - 1 > rackU) return false;
-    for (let u = s; u < s + uHeight; u++) if (occ.get(u)) return false;
-    return true;
-  };
-  for (let d = 0; d < rackU; d++) {
-    if (fits(desired + d)) return desired + d;
-    if (fits(desired - d)) return desired - d;
-  }
-  return -1;
-}
 
 function RackRail({
   uHeight,
@@ -338,6 +317,8 @@ function RackRail({
 function PlacedDevice({
   placement,
   deviceUHeight,
+  width,
+  side,
   uPx,
   top,
   selected,
@@ -349,6 +330,8 @@ function PlacedDevice({
 }: {
   placement: RackPlacement;
   deviceUHeight: number;
+  width: "full" | "half";
+  side: "left" | "right";
   uPx: number;
   top: number;
   selected: boolean;
@@ -362,8 +345,8 @@ function PlacedDevice({
     <div
       className="absolute group"
       style={{
-        left: 0,
-        right: 0,
+        left: width === "half" && side === "right" ? "50%" : 0,
+        right: width === "half" && side === "left" ? "50%" : 0,
         top,
         height: deviceUHeight * uPx,
         cursor: "grab",

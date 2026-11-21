@@ -2,9 +2,19 @@ import { useMemo } from "react";
 import {
   useProjectStore,
   selectActiveRack,
+  type Rack,
   type RackPlacement,
 } from "../store/projectStore";
 import { rackDevicesById } from "../data/rackDevices";
+import {
+  canFitAt,
+  isShelfDevice,
+  occupiedUSlots,
+  placementHasShelf,
+  placementUHeight,
+  placementWidth,
+} from "./rackUtils";
+import { RackPatching } from "./RackPatching";
 import { Trash2, Server } from "lucide-react";
 
 interface Props {
@@ -22,14 +32,15 @@ export function RackProperties({ selectedPlacementId, onSelectPlacement }: Props
 
   const totals = useMemo(() => {
     if (!rack) return null;
-    let usedU = 0;
+    // "Used" counts each occupied U once — two half-width devices sharing
+    // a U row still only use that U once.
+    const usedU = occupiedUSlots(rack).size;
     let watts = 0;
     let weight = 0;
     let cost = 0;
     for (const p of rack.placements) {
       const d = rackDevicesById[p.deviceId];
       if (!d) continue;
-      usedU += d.uHeight;
       watts += d.powerWatts;
       weight += d.weightLbs;
       cost += p.costOverride ?? d.defaultCost;
@@ -61,6 +72,7 @@ export function RackProperties({ selectedPlacementId, onSelectPlacement }: Props
         {placement ? (
           <PlacementEditor
             key={placement.id}
+            rack={rack}
             placement={placement}
             onChange={(p) => updatePlacement(rack.id, placement.id, p)}
             onDelete={() => {
@@ -148,6 +160,8 @@ export function RackProperties({ selectedPlacementId, onSelectPlacement }: Props
                 .map((p) => {
                   const d = rackDevicesById[p.deviceId];
                   if (!d) return null;
+                  const effH = placementUHeight(p, d);
+                  const w = placementWidth(p);
                   return (
                     <div
                       key={p.id}
@@ -156,13 +170,13 @@ export function RackProperties({ selectedPlacementId, onSelectPlacement }: Props
                     >
                       <span className="text-[10px] font-mono text-amber-knox tabular-nums w-12">
                         U{p.uSlot}
-                        {d.uHeight > 1 ? `–${p.uSlot + d.uHeight - 1}` : ""}
+                        {effH > 1 ? `–${p.uSlot + effH - 1}` : ""}
                       </span>
                       <span className="text-xs text-ink-100 truncate flex-1">
                         {d.label}
                       </span>
                       <span className="text-[10px] font-mono text-ink-400">
-                        {d.uHeight}U
+                        {effH}U{w === "half" ? ` · ½ ${p.side ?? "left"}` : ""}
                       </span>
                     </div>
                   );
@@ -182,17 +196,21 @@ export function RackProperties({ selectedPlacementId, onSelectPlacement }: Props
             </button>
           </>
         )}
+
+        <RackPatching rack={rack} onSelectPlacement={onSelectPlacement} />
       </div>
     </aside>
   );
 }
 
 function PlacementEditor({
+  rack,
   placement,
   onChange,
   onDelete,
   onClose,
 }: {
+  rack: Rack;
   placement: RackPlacement;
   onChange: (p: Partial<RackPlacement>) => void;
   onDelete: () => void;
@@ -200,19 +218,52 @@ function PlacementEditor({
 }) {
   const dev = rackDevicesById[placement.deviceId];
   if (!dev) return null;
+  const effH = placementUHeight(placement, dev);
+  const width = placementWidth(placement);
+  const side = placement.side ?? "left";
+  const hasShelf = placementHasShelf(rack, placement);
+  const heightOptions = dev.variableHeight
+    ? Array.from(
+        { length: dev.variableHeight.max - dev.variableHeight.min + 1 },
+        (_, i) => dev.variableHeight!.min + i,
+      )
+    : null;
+  const fits = (h: number, w: "full" | "half", s: "left" | "right") =>
+    canFitAt(rack, placement.uSlot, h, w, s, placement.id);
+  // Nearest shelf below the device this half-width device can snap onto.
+  const snapSlot = (() => {
+    if (width !== "half" || hasShelf) return null;
+    const tops = rack.placements
+      .filter((p) => p.id !== placement.id)
+      .map((p) => {
+        const sd = rackDevicesById[p.deviceId];
+        return sd && isShelfDevice(sd)
+          ? p.uSlot + placementUHeight(p, sd) - 1
+          : null;
+      })
+      .filter((t): t is number => t !== null)
+      .sort((a, b) => b - a);
+    for (const topU of tops) {
+      const slot = topU + 1;
+      if (canFitAt(rack, slot, effH, "half", side, placement.id)) return slot;
+    }
+    return null;
+  })();
   return (
     <>
       <div className="flex items-start justify-between">
         <div>
           <div className="text-xs text-amber-knox font-mono">
             U{placement.uSlot}
-            {dev.uHeight > 1 ? `–${placement.uSlot + dev.uHeight - 1}` : ""}
+            {effH > 1 ? `–${placement.uSlot + effH - 1}` : ""}
           </div>
           <div className="text-sm font-semibold text-ink-100 leading-tight">
             {dev.label}
           </div>
           <div className="text-[10px] font-mono text-ink-400">
-            {dev.manufacturer} · {dev.model} · {dev.uHeight}U
+            {dev.manufacturer}
+            {dev.model ? ` · ${dev.model}` : ""} · {effH}U
+            {width === "half" ? ` · ½ ${side}` : ""}
           </div>
         </div>
         <button onClick={onClose} className="btn-ghost text-ink-400">×</button>
@@ -229,6 +280,88 @@ function PlacementEditor({
           }}
         />
       </Field>
+
+      {dev.halfWidth && (
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Width">
+            <select
+              className="input"
+              value={width}
+              onChange={(e) =>
+                onChange(
+                  e.target.value === "half"
+                    ? { width: "half", side }
+                    : { width: "full", side: undefined },
+                )
+              }
+            >
+              <option value="full" disabled={!fits(effH, "full", "left")}>
+                Full width
+              </option>
+              <option value="half">Half width</option>
+            </select>
+          </Field>
+          {width === "half" && (
+            <Field label="Side">
+              <select
+                className="input"
+                value={side}
+                onChange={(e) =>
+                  onChange({ side: e.target.value as "left" | "right" })
+                }
+              >
+                <option value="left" disabled={!fits(effH, "half", "left")}>
+                  Left
+                </option>
+                <option value="right" disabled={!fits(effH, "half", "right")}>
+                  Right
+                </option>
+              </select>
+            </Field>
+          )}
+        </div>
+      )}
+
+      {heightOptions && (
+        <Field label="Height">
+          <select
+            className="input"
+            value={placement.uHeightOverride ?? dev.uHeight}
+            onChange={(e) => {
+              const v = parseInt(e.target.value, 10);
+              onChange({ uHeightOverride: v === dev.uHeight ? undefined : v });
+            }}
+          >
+            {heightOptions.map((h) => (
+              <option key={h} value={h} disabled={!fits(h, width, side)}>
+                {h}U
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      {width === "half" && !hasShelf && (
+        <div className="rounded-lg border border-amber-knox/40 bg-amber-knox/10 p-3 text-xs space-y-2">
+          <div className="text-amber-knox font-medium">
+            No shelf under this device
+          </div>
+          <div className="text-ink-300">
+            Half-width devices sit on a shelf.{" "}
+            {placement.uSlot > 1
+              ? `Place a shelf at U${placement.uSlot - 1} under it.`
+              : "Move it up — it needs a shelf under it."}
+          </div>
+          {snapSlot !== null && (
+            <button
+              className="btn"
+              onClick={() => onChange({ uSlot: snapSlot })}
+            >
+              Snap onto shelf (U{snapSlot})
+            </button>
+          )}
+        </div>
+      )}
       <Field label="Asset Tag / Label">
         <input
           className="input"
@@ -276,7 +409,7 @@ function PlacementEditor({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
       <div className="label mb-1">{label}</div>

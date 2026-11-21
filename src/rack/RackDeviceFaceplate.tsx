@@ -72,7 +72,6 @@ export function RackDeviceFaceplate({
 }: Props) {
   const f = device.faceplate;
   const heightPx = device.uHeight * uPx;
-  const widthEffective = widthPx ?? 600; // logical width; CSS scales as needed
 
   return (
     <div
@@ -101,13 +100,19 @@ export function RackDeviceFaceplate({
       {/* Mounting screws */}
       {f.screws && <Screws heightPx={heightPx} base={f.base} />}
 
-      {/* Brand wedge */}
-      {f.brand && <Brand brand={f.brand} heightPx={heightPx} />}
-
-      {/* Texts */}
-      {f.texts?.map((t, i) => (
-        <FText key={i} t={t} heightPx={heightPx} widthEffective={widthEffective} />
-      ))}
+      {/* Brand stripe (tall accent bar, kept from the old layout) */}
+      {f.brand && (
+        <div
+          className="absolute rounded-sm"
+          style={{
+            left: `${f.brand.x}%`,
+            top: "18%",
+            height: "64%",
+            width: 3,
+            backgroundColor: f.brand.accent ?? "#F4B740",
+          }}
+        />
+      )}
 
       {/* Bays (HDDs, batteries, vents) */}
       {f.bays?.map((b, i) => (
@@ -123,6 +128,63 @@ export function RackDeviceFaceplate({
       {f.leds?.map((l, i) => (
         <Led key={i} led={l} heightPx={heightPx} />
       ))}
+
+      {/* Brand + model on ONE line — the two used to print on top of each
+          other in 1U rows. Sits low on the faceplate, clear of the port
+          rows above it. Rendered after the bays so a tall bay never paints
+          over it. */}
+      {(f.brand || (f.texts?.length ?? 0) > 0) && (
+        <div
+          className="absolute flex items-baseline"
+          style={{
+            left: 16,
+            top: "82%",
+            transform: "translateY(-50%)",
+            maxWidth: overlayLabel ? "calc(100% - 110px)" : "calc(100% - 24px)",
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+            gap: 6,
+          }}
+        >
+          {f.brand && (
+            <span
+              className="font-bold shrink-0"
+              style={{
+                fontSize: Math.max(7, heightPx * 0.16),
+                color: f.brand.accent ?? "#F4B740",
+                letterSpacing: "0.08em",
+                textShadow: "0 1px 0 rgba(0,0,0,0.5)",
+              }}
+            >
+              {f.brand.text}
+            </span>
+          )}
+          {f.texts?.map((t, i) => {
+            const size = TEXT_SIZE[t.size ?? "sm"];
+            const scaled = Math.max(6, size * (heightPx / 32));
+            return (
+              <span
+                key={i}
+                className={
+                  t.weight === "bold" ? "font-bold shrink-0" : "font-medium shrink-0"
+                }
+                style={{
+                  fontSize: scaled,
+                  color:
+                    t.color === "amber"
+                      ? "#F4B740"
+                      : t.color === "muted"
+                      ? "rgba(120,128,144,0.85)"
+                      : undefined,
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {t.text}
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       {/* Overlay label (e.g. user tag) */}
       {overlayLabel && (
@@ -192,74 +254,6 @@ function Screws({ heightPx, base }: { heightPx: number; base: Faceplate["base"] 
   );
 }
 
-function Brand({
-  brand,
-  heightPx,
-}: {
-  brand: NonNullable<Faceplate["brand"]>;
-  heightPx: number;
-}) {
-  const accent = brand.accent ?? "#F4B740";
-  return (
-    <div
-      className="absolute flex items-center"
-      style={{
-        left: `${brand.x}%`,
-        top: heightPx * 0.18,
-        height: heightPx * 0.64,
-      }}
-    >
-      <div
-        className="h-full rounded-sm mr-1.5"
-        style={{ width: 3, backgroundColor: accent }}
-      />
-      <div
-        className="font-bold tracking-wider"
-        style={{
-          fontSize: Math.max(7, heightPx * 0.16),
-          color: accent,
-          letterSpacing: "0.08em",
-          textShadow: "0 1px 0 rgba(0,0,0,0.5)",
-        }}
-      >
-        {brand.text}
-      </div>
-    </div>
-  );
-}
-
-function FText({
-  t,
-  heightPx,
-}: {
-  t: FaceplateText;
-  heightPx: number;
-  widthEffective: number;
-}) {
-  const size = TEXT_SIZE[t.size ?? "sm"];
-  const scaled = Math.max(6, size * (heightPx / 32));
-  const yPct = t.y ?? 30;
-  return (
-    <div
-      className={`absolute ${t.weight === "bold" ? "font-bold" : "font-medium"}`}
-      style={{
-        left: `${t.x}%`,
-        top: `${yPct}%`,
-        fontSize: scaled,
-        color:
-          t.color === "amber"
-            ? "#F4B740"
-            : t.color === "muted"
-            ? "rgba(120,128,144,0.85)"
-            : undefined,
-        letterSpacing: "0.04em",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {t.text}
-    </div>
-  );
-}
 
 function Bay({ bay, heightPx }: { bay: FaceplateBay; heightPx: number }) {
   const yPct = bay.y ?? 12;
