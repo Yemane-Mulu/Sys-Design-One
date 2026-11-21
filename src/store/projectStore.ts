@@ -155,6 +155,9 @@ export interface RackPlacement {
   uSlot: number;
   /** Optional override label printed under the schedule */
   label?: string;
+  /** Short name for the patch table (e.g. "PP", "SW 1") — typed per
+   *  placement, printed instead of the label in the patching table. */
+  shortName?: string;
   /** Per-instance cost override (USD) */
   costOverride?: number;
   /** Internal notes (not exported) */

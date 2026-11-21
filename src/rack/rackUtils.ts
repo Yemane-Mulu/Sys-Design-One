@@ -184,3 +184,46 @@ export function patchGroupText(
   const ports = (ns: number[]) => ns.map((n) => `Port ${n}`).join(", ");
   return `${fromName}, ${ports(g.fromPorts)} -> ${toName}, ${ports(g.toPorts)}`;
 }
+
+/** Name used in the patch table: the placement's short name when set
+ *  (e.g. "PP", "SW 1"), else its display name. */
+export function placementPatchName(p: RackPlacement, dev: RackDeviceType): string {
+  const s = p.shortName?.trim();
+  return s ? s : placementDisplayName(p, dev);
+}
+
+/** One row of the printed patch table: a panel port and the switch port
+ *  it patches to, both by short name — e.g. { panel: "PP 1", switch:
+ *  "SW 1 / P 1" }. Rows run panel top-down (highest U first), then by
+ *  port number. */
+export interface PatchTableRow {
+  panel: string;
+  switch: string;
+}
+
+export function patchTableRows(
+  rack: Rack,
+  devs: Record<string, RackDeviceType>,
+): PatchTableRow[] {
+  const byId = new Map(rack.placements.map((p) => [p.id, p]));
+  const links = [...(rack.patchLinks ?? [])].sort((a, b) => {
+    const ua = byId.get(a.fromPlacementId)?.uSlot ?? 0;
+    const ub = byId.get(b.fromPlacementId)?.uSlot ?? 0;
+    if (ub !== ua) return ub - ua;
+    return a.fromPort - b.fromPort;
+  });
+  const rows: PatchTableRow[] = [];
+  for (const l of links) {
+    const fromP = byId.get(l.fromPlacementId);
+    const toP = byId.get(l.toPlacementId);
+    if (!fromP || !toP) continue;
+    const fromDev = devs[fromP.deviceId];
+    const toDev = devs[toP.deviceId];
+    if (!fromDev || !toDev) continue;
+    rows.push({
+      panel: `${placementPatchName(fromP, fromDev)} ${l.fromPort}`,
+      switch: `${placementPatchName(toP, toDev)} / P ${l.toPort}`,
+    });
+  }
+  return rows;
+}

@@ -370,6 +370,18 @@ function PlacementEditor({
           onChange={(e) => onChange({ label: e.target.value || undefined })}
         />
       </Field>
+      {(dev.category === "patch" || dev.category === "switch") && (
+        <Field label="Short name (patch table)">
+          <input
+            className="input"
+            placeholder={dev.category === "patch" ? "e.g. PP" : "e.g. SW 1"}
+            value={placement.shortName ?? ""}
+            onChange={(e) =>
+              onChange({ shortName: e.target.value || undefined })
+            }
+          />
+        </Field>
+      )}
       <Field label={`Cost Override (default $${dev.defaultCost.toLocaleString()})`}>
         <input
           className="input"

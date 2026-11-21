@@ -9,7 +9,7 @@ import {
   groupPatchLinks,
   patchGroupText,
   patchablePorts,
-  placementDisplayName,
+  placementPatchName,
 } from "./rackUtils";
 import { Field } from "./RackProperties";
 
@@ -26,7 +26,8 @@ function uid() {
  * Patch panel -> switch port mapping, scoped to this rack.
  * Click a panel port, then the switch port it patches to. Auto-map fills
  * 1:1 down the row; Map range patches a run of ports at once. The links
- * print on the elevation as one line per panel->switch pair.
+ * print on the elevation as a two-column table (one row per patched port),
+ * using each placement's short name when set — e.g. "PP 1" -> "SW 1 / P 1".
  */
 export function RackPatching({ rack, onSelectPlacement }: Props) {
   const addPatchLink = useProjectStore((s) => s.addPatchLink);
@@ -164,7 +165,7 @@ export function RackPatching({ rack, onSelectPlacement }: Props) {
               >
                 {panels.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {placementDisplayName(p, rackDevicesById[p.deviceId]!)}
+                    {placementPatchName(p, rackDevicesById[p.deviceId]!)}
                   </option>
                 ))}
               </select>
@@ -177,7 +178,7 @@ export function RackPatching({ rack, onSelectPlacement }: Props) {
               >
                 {switches.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {placementDisplayName(p, rackDevicesById[p.deviceId]!)}
+                    {placementPatchName(p, rackDevicesById[p.deviceId]!)}
                   </option>
                 ))}
               </select>
@@ -186,7 +187,7 @@ export function RackPatching({ rack, onSelectPlacement }: Props) {
 
           <div>
             <div className="label mb-1">
-              {panel ? placementDisplayName(panel, panelDev!) : "Panel"} — ports
+              {panel ? placementPatchName(panel, panelDev!) : "Panel"} — ports
             </div>
             <div className="grid grid-cols-12 gap-1">
               {panelPorts.map((n) => (
@@ -208,7 +209,7 @@ export function RackPatching({ rack, onSelectPlacement }: Props) {
 
           <div>
             <div className="label mb-1">
-              {sw ? placementDisplayName(sw, switchDev!) : "Switch"} — ports
+              {sw ? placementPatchName(sw, switchDev!) : "Switch"} — ports
             </div>
             <div className="grid grid-cols-12 gap-1">
               {switchPorts.map((n) => (
@@ -294,8 +295,8 @@ export function RackPatching({ rack, onSelectPlacement }: Props) {
                 const fromP = byId.get(g.fromPlacementId) as RackPlacement | undefined;
                 const toP = byId.get(g.toPlacementId) as RackPlacement | undefined;
                 if (!fromP || !toP) return null;
-                const fromName = placementDisplayName(fromP, rackDevicesById[fromP.deviceId]!);
-                const toName = placementDisplayName(toP, rackDevicesById[toP.deviceId]!);
+                const fromName = placementPatchName(fromP, rackDevicesById[fromP.deviceId]!);
+                const toName = placementPatchName(toP, rackDevicesById[toP.deviceId]!);
                 return (
                   <div key={`${g.fromPlacementId}->${g.toPlacementId}`} className="flex items-start justify-between gap-2">
                     <span className="text-[11px] text-ink-200 leading-snug">

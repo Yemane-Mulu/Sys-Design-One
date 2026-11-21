@@ -13,10 +13,8 @@ import {
 import { loadBrandFonts, hex, safeText, type BrandFonts } from "./titleBlockRenderer";
 import { resolveBranding, type BrandingConfig } from "../lib/branding";
 import {
-  groupPatchLinks,
   occupiedUSlots,
-  patchGroupText,
-  placementDisplayName,
+  patchTableRows,
   placementUHeight,
   placementWidth,
 } from "../rack/rackUtils";
@@ -639,32 +637,12 @@ function drawSchedule(
     color: KN_INK_500,
   });
 
-  // Patch groups print under the totals; reserve room for them at the
-  // bottom of the panel so rows never run into the totals box. A group is
-  // one line per panel -> switch pair, wrapped to fit the panel width.
-  const patchGroups = groupPatchLinks(rack.patchLinks ?? []);
-  const patchLines: string[] = [];
-  for (const g of patchGroups) {
-    const fromP = rack.placements.find((p) => p.id === g.fromPlacementId);
-    const toP = rack.placements.find((p) => p.id === g.toPlacementId);
-    if (!fromP || !toP) continue;
-    const fromDev = rackDevicesById[fromP.deviceId];
-    const toDev = rackDevicesById[toP.deviceId];
-    if (!fromDev || !toDev) continue;
-    patchLines.push(
-      ...wrapText(
-        fonts.regular,
-        patchGroupText(
-          g,
-          placementDisplayName(fromP, fromDev),
-          placementDisplayName(toP, toDev),
-        ),
-        w - 16,
-      ),
-    );
-  }
+  // Patch rows print under the totals; reserve room for them at the
+  // bottom of the panel so rows never run into the totals box. One row per
+  // patched port, by short name — "PP 1" -> "SW 1 / P 1".
+  const patchRows = patchTableRows(rack, rackDevicesById);
   const reserve =
-    100 + (patchLines.length > 0 ? 14 + patchLines.length * 11 + 8 : 0);
+    100 + (patchRows.length > 0 ? 45 + patchRows.length * 11 : 0);
 
   let totalW = 0;
   let totalLb = 0;
@@ -742,8 +720,9 @@ function drawSchedule(
     ly -= 14;
   }
 
-  // Patching — one line per panel -> switch pair, only the patched ports.
-  if (patchLines.length > 0) {
+  // Patching — two-column table, one row per patched port, by short name.
+  // Only the patched ports, panel top-down then by port number.
+  if (patchRows.length > 0) {
     let py = tbY - 12;
     page.drawText("PATCHING", {
       x: x + 8,
@@ -753,19 +732,49 @@ function drawSchedule(
       color: accent,
     });
     py -= 11;
-    for (const line of patchLines) {
+    page.drawRectangle({
+      x: x + 6,
+      y: py - 14,
+      width: w - 12,
+      height: 14,
+      color: accent,
+    });
+    page.drawText("PATCH PANEL", {
+      x: x + 12,
+      y: py - 11,
+      size: 7,
+      font: fonts.bold,
+      color: KN_MID,
+    });
+    const swX = x + w / 2;
+    page.drawText("SWITCH", {
+      x: swX,
+      y: py - 11,
+      size: 7,
+      font: fonts.bold,
+      color: KN_MID,
+    });
+    py -= 14;
+    for (const row of patchRows) {
+      py -= 11;
       if (py < y + 10) {
         page.drawText("…", { x: x + 8, y: py, size: 8, font: fonts.bold, color: KN_INK_400 });
         break;
       }
-      page.drawText(safeText(line), {
-        x: x + 8,
+      page.drawText(safeText(fitText(fonts.regular, row.panel, w / 2 - 20, 7)), {
+        x: x + 12,
         y: py,
         size: 7,
         font: fonts.regular,
         color: KN_INK,
       });
-      py -= 11;
+      page.drawText(safeText(fitText(fonts.regular, row.switch, w / 2 - 12, 7)), {
+        x: swX,
+        y: py,
+        size: 7,
+        font: fonts.regular,
+        color: KN_INK,
+      });
     }
   }
 }
@@ -811,28 +820,7 @@ function fitText(
   return lo > 0 ? text.slice(0, lo) + ell : ell;
 }
 
-/** Greedy word-wrap to a pixel width; returns one string per visual line. */
-function wrapText(
-  font: BrandFonts["regular"],
-  text: string,
-  maxWidth: number,
-  size = 7,
-): string[] {
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let cur = "";
-  for (const word of words) {
-    const next = cur ? `${cur} ${word}` : word;
-    if (font.widthOfTextAtSize(next, size) <= maxWidth) {
-      cur = next;
-    } else {
-      if (cur) lines.push(cur);
-      cur = word;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
+
 
 function usd(n: number) {
   return n.toLocaleString("en-US", {
