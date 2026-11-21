@@ -39,12 +39,25 @@ export function PatchPanelBuilder() {
     [rack],
   );
 
+  // Patched-port count per panel — for the dropdown, the default panel
+  // pick, and the empty state, so patched ports never look lost.
+  const linkCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of rack?.patchLinks ?? []) {
+      m.set(l.fromPlacementId, (m.get(l.fromPlacementId) ?? 0) + 1);
+    }
+    return m;
+  }, [rack]);
+
   // Reset the panel pick when the rack changes.
   useEffect(() => {
     setPanelId("");
   }, [rack?.id]);
 
-  const panel = panels.find((p) => p.id === panelId) ?? panels[0];
+  const panel =
+    panels.find((p) => p.id === panelId) ??
+    panels.find((p) => (linkCounts.get(p.id) ?? 0) > 0) ??
+    panels[0];
   const panelDev = panel ? rackDevicesById[panel.deviceId] : undefined;
 
   const links = useMemo(
@@ -85,6 +98,15 @@ export function PatchPanelBuilder() {
   );
 
   const assignedCount = links.filter((l) => l.dropId).length;
+
+  // The first other panel in this rack that already has patched ports —
+  // the empty state names it, so the patches are findable.
+  const otherWithLinks = panels.find(
+    (p) => p.id !== panel?.id && (linkCounts.get(p.id) ?? 0) > 0,
+  );
+  const otherWithLinksCount = otherWithLinks
+    ? linkCounts.get(otherWithLinks.id) ?? 0
+    : 0;
 
   // Drops with no port yet — shown on this tab even before any port
   // is patched, so a fresh import never looks like it vanished.
@@ -132,11 +154,15 @@ export function PatchPanelBuilder() {
                   onChange={(e) => setPanelId(e.target.value)}
                   disabled={panels.length === 0}
                 >
-                  {panels.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {placementPatchName(p, rackDevicesById[p.deviceId]!)}
-                    </option>
-                  ))}
+                  {panels.map((p) => {
+                    const n = linkCounts.get(p.id) ?? 0;
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {placementPatchName(p, rackDevicesById[p.deviceId]!)}
+                        {n > 0 ? ` · ${n} patched` : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               </Field>
             </div>
@@ -148,8 +174,20 @@ export function PatchPanelBuilder() {
             ) : !panel ? null : links.length === 0 ? (
               <div className="panel rounded-lg p-6 text-sm text-ink-300 text-center">
                 No patched ports on{" "}
-                {placementPatchName(panel, panelDev!)} yet — patch ports in the
-                Racks view first, then come back here to attach drops.
+                {placementPatchName(panel, panelDev!)} yet —{" "}
+                {otherWithLinks ? (
+                  <>
+                    {placementPatchName(
+                      otherWithLinks,
+                      rackDevicesById[otherWithLinks.deviceId]!,
+                    )}{" "}
+                    has {otherWithLinksCount} patched port
+                    {otherWithLinksCount === 1 ? "" : "s"}. Switch panels
+                    above to attach drops.
+                  </>
+                ) : (
+                  "patch ports in the Racks view first, then come back here to attach drops."
+                )}
               </div>
             ) : (
               <div className="panel rounded-lg p-3 space-y-2">
