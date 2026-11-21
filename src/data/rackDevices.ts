@@ -232,7 +232,7 @@ export const rackDevices: RackDeviceType[] = [
     manufacturer: "Generic",
     model: "",
     category: "switch",
-    uHeight: 2,
+    uHeight: 1,
     powerWatts: 0,
     weightLbs: 0,
     defaultCost: 0,
