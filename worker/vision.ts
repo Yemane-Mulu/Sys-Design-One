@@ -132,11 +132,28 @@ export function parseVisionResponse(content: unknown, model: string): VisionResu
   return { labels, key, model };
 }
 
-function json(obj: unknown, status: number): Response {
+function json(obj: unknown, status: number, extraHeaders?: Record<string, string>): Response {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...extraHeaders },
   });
+}
+
+/** Diagnostic headers on every vision response, so the failure mode is
+ *  readable from the browser Network tab — no Worker logs needed. */
+function diagHeaders(
+  stage: string,
+  elapsedMs: number,
+  finishReason?: string,
+  reasoningTokens?: number,
+): Record<string, string> {
+  const h: Record<string, string> = {
+    "X-Vision-Stage": stage,
+    "X-Vision-Elapsed-Ms": String(Math.round(elapsedMs)),
+  };
+  if (finishReason) h["X-Vision-Finish-Reason"] = finishReason;
+  if (typeof reasoningTokens === "number") h["X-Vision-Reasoning-Tokens"] = String(reasoningTokens);
+  return h;
 }
 
 export default {
@@ -178,69 +195,257 @@ export default {
         ? configured
         : DEFAULT_MODEL;
 
+    // Neon fix (2026-11-21, confirmed by the 499/client_disconnected
+    // log + >45s duration): the old code read the answer with
+    // upstream.json(), which both downloads the body and parses it, so
+    // the 45s AbortSignal.timeout firing mid-download was reported as
+    // "unreadable response" instead of a timeout. The stages are split
+    // below so each failure names itself; the timeout is 90s (under
+    // Cloudflare's 100s edge limit); and the model's thinking is capped
+    // — reading printed labels needs no deep reasoning, and uncapped
+    // thinking is what pushed real plans past 45s.
+    const TIMEOUT_MS = 90_000;
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, TIMEOUT_MS);
+
     let upstream: Response;
+    let rawBody = "";
     try {
-      upstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-          "HTTP-Referer": "https://meetlayerone.com",
-          "X-Title": "DesignOne System Designer",
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+      try {
+        upstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+            "HTTP-Referer": "https://meetlayerone.com",
+            "X-Title": "DesignOne System Designer",
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: SYSTEM_PROMPT },
+              {
+                role: "user",
+                content: [
+                  { type: "image_url", image_url: { url: image } },
+                  { type: "text", text: "List every label on this plan, and read the legend." },
+                ],
+              },
+            ],
+            response_format: { type: "json_object" },
+            // Cap thinking: label extraction is reading, not reasoning.
+            // Uncapped thinking on Flash is what pushed real plans past
+            // the old 45s timeout. Verified: "reasoning" is a supported
+            // parameter for google/gemini-2.5-flash on OpenRouter.
+            reasoning: { max_tokens: 1024 },
+            // A long plan can carry hundreds of labels; the old 4000-token
+            // cap cut the answer off mid-JSON on dense plans ("unreadable
+            // result"). 16000 covers ~1500 compact labels; the model only
+            // spends what the plan needs.
+            max_tokens: 16000,
+            temperature: 0,
+          }),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        const elapsedMs = Date.now() - startedAt;
+        const e = err instanceof Error ? err : new Error(String(err));
+        console.error(
+          JSON.stringify({
+            stage: "fetch",
+            timedOut,
+            elapsedMs,
+            model,
+            imageChars: image.length,
+            errorName: e.name,
+            errorMessage: e.message,
+          }),
+        );
+        if (timedOut || e.name === "TimeoutError" || e.name === "AbortError") {
+          return json(
             {
-              role: "user",
-              content: [
-                { type: "image_url", image_url: { url: image } },
-                { type: "text", text: "List every label on this plan, and read the legend." },
-              ],
+              error: "the vision request timed out waiting for the provider — try again",
+              debug: { stage: "fetch", elapsedMs },
             },
-          ],
-          response_format: { type: "json_object" },
-          // A long plan can carry hundreds of labels; the old 4000-token
-          // cap cut the answer off mid-JSON on dense plans ("unreadable
-          // result"). 16000 covers ~1500 compact labels; the model only
-          // spends what the plan needs.
-          max_tokens: 16000,
-          temperature: 0,
-        }),
-        signal: AbortSignal.timeout(45_000),
-      });
-    } catch {
-      return json({ error: "the vision request timed out — try again" }, 504);
+            504,
+            diagHeaders("fetch", elapsedMs),
+          );
+        }
+        return json(
+          {
+            error: "could not reach the vision provider — try again",
+            debug: { stage: "fetch", elapsedMs, errorName: e.name },
+          },
+          502,
+          diagHeaders("fetch", elapsedMs),
+        );
+      }
+
+      try {
+        rawBody = await upstream.text();
+      } catch (err) {
+        const elapsedMs = Date.now() - startedAt;
+        const e = err instanceof Error ? err : new Error(String(err));
+        console.error(
+          JSON.stringify({
+            stage: "read_body",
+            timedOut,
+            elapsedMs,
+            model,
+            imageChars: image.length,
+            upstreamStatus: upstream.status,
+            contentType: upstream.headers.get("content-type") ?? "",
+            errorName: e.name,
+            errorMessage: e.message,
+          }),
+        );
+        if (timedOut || e.name === "TimeoutError" || e.name === "AbortError") {
+          return json(
+            {
+              error: "the vision request timed out while the model was working — try again",
+              debug: { stage: "read_body", elapsedMs, upstreamStatus: upstream.status },
+            },
+            504,
+            diagHeaders("read_body", elapsedMs),
+          );
+        }
+        return json(
+          {
+            error: "the connection to the vision provider was interrupted — try again",
+            debug: {
+              stage: "read_body",
+              elapsedMs,
+              upstreamStatus: upstream.status,
+              errorName: e.name,
+            },
+          },
+          502,
+          diagHeaders("read_body", elapsedMs),
+        );
+      }
+    } finally {
+      clearTimeout(timer);
     }
+
+    const elapsedMs = Date.now() - startedAt;
+    const contentType = upstream.headers.get("content-type") ?? "";
+    const trimmed = rawBody.trim();
+
     if (!upstream.ok) {
-      return json({ error: `the vision provider returned ${upstream.status}` }, 502);
+      console.error(
+        JSON.stringify({
+          stage: "upstream_status",
+          elapsedMs,
+          model,
+          imageChars: image.length,
+          upstreamStatus: upstream.status,
+          contentType,
+          bodyHead: trimmed.slice(0, 500),
+        }),
+      );
+      return json(
+        {
+          error: `the vision provider returned ${upstream.status}`,
+          debug: {
+            stage: "upstream_status",
+            elapsedMs,
+            upstreamStatus: upstream.status,
+            contentType,
+            bodyPreview: trimmed.slice(0, 300),
+          },
+        },
+        502,
+        diagHeaders("upstream_status", elapsedMs),
+      );
     }
+
     let data: unknown;
     try {
-      data = await upstream.json();
-    } catch {
-      return json({ error: "the vision provider returned an unreadable response" }, 502);
+      if (!trimmed) throw new SyntaxError("empty or whitespace-only body");
+      data = JSON.parse(trimmed);
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err));
+      console.error(
+        JSON.stringify({
+          stage: "parse_json",
+          elapsedMs,
+          model,
+          imageChars: image.length,
+          upstreamStatus: upstream.status,
+          contentType,
+          rawLength: rawBody.length,
+          trimmedLength: trimmed.length,
+          bodyHead: trimmed.slice(0, 400),
+          bodyTail: trimmed.length > 400 ? trimmed.slice(-200) : "",
+          errorName: e.name,
+          errorMessage: e.message,
+        }),
+      );
+      return json(
+        {
+          error: "the vision provider returned an unreadable response",
+          debug: {
+            stage: "parse_json",
+            elapsedMs,
+            upstreamStatus: upstream.status,
+            contentType,
+            rawLength: rawBody.length,
+            errorMessage: e.message,
+          },
+        },
+        502,
+        diagHeaders("parse_json", elapsedMs),
+      );
     }
     const choice = (data as { choices?: { message?: { content?: unknown }; finish_reason?: unknown }[] })
       ?.choices?.[0];
     // Some providers answer 200 with an error object and no choices.
     const providerError = (data as { error?: { message?: unknown } })?.error?.message;
     if (typeof providerError === "string" && providerError) {
-      return json({ error: `the vision provider said: ${providerError}` }, 502);
+      return json(
+        {
+          error: `the vision provider said: ${providerError}`,
+          debug: { stage: "provider_error", elapsedMs },
+        },
+        502,
+        diagHeaders("provider_error", elapsedMs),
+      );
     }
     const content = choice?.message?.content;
-    const finishReason = choice?.finish_reason;
+    const finishReason =
+      typeof choice?.finish_reason === "string" ? choice.finish_reason : undefined;
+    const reasoningTokens = (
+      data as { usage?: { completion_tokens_details?: { reasoning_tokens?: unknown } } }
+    )?.usage?.completion_tokens_details?.reasoning_tokens;
+    const rt = typeof reasoningTokens === "number" ? reasoningTokens : undefined;
     try {
-      return json(parseVisionResponse(content, model), 200);
+      const result = parseVisionResponse(content, model);
+      return json(result, 200, diagHeaders("ok", Date.now() - startedAt, finishReason, rt));
     } catch {
+      const parseElapsedMs = Date.now() - startedAt;
       if (finishReason === "length") {
         return json(
-          { error: "the plan has too many labels — the model's answer was cut off. Try again." },
+          {
+            error: "the plan has too many labels — the model's answer was cut off. Try again.",
+            debug: { stage: "parse_result", elapsedMs: parseElapsedMs, finishReason },
+          },
           502,
+          diagHeaders("parse_result", parseElapsedMs, finishReason, rt),
         );
       }
-      return json({ error: "the model returned an unreadable result — try again" }, 502);
+      return json(
+        {
+          error: "the model returned an unreadable result — try again",
+          debug: { stage: "parse_result", elapsedMs: parseElapsedMs, finishReason },
+        },
+        502,
+        diagHeaders("parse_result", parseElapsedMs, finishReason, rt),
+      );
     }
   },
 };
