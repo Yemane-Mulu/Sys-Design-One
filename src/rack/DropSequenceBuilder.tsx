@@ -25,6 +25,9 @@ interface SequenceRow {
   id: string;
   start: string;
   upTo: string;
+  /** Note for the whole row — lands on every drop it generates, and
+   *  shows on the Patch Panels tab. */
+  note: string;
 }
 
 /** Stage drops in rows near the top of the sheet — same layout as the
@@ -35,9 +38,16 @@ export function DropSequenceBuilder() {
   const project = useProjectStore((s) => s.project);
   const activeSheetId = useProjectStore((s) => s.activeSheetId);
   const setView = useProjectStore((s) => s.setView);
-  const [rows, setRows] = useState<SequenceRow[]>([{ id: uid(), start: "", upTo: "" }]);
+  const [rows, setRows] = useState<SequenceRow[]>([
+    { id: uid(), start: "", upTo: "", note: "" },
+  ]);
   const [result, setResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const dropCount = useMemo(
+    () => (project ? allDropMarkups(project).length : 0),
+    [project],
+  );
 
   const existing = useMemo(() => {
     const set = new Set<string>();
@@ -73,26 +83,28 @@ export function DropSequenceBuilder() {
     [rows, existing],
   );
 
-  // Labels this would add, deduped across rows and against the project.
+  // Labels this would add, deduped across rows and against the project,
+  // each carrying its row's note.
   const toAdd = useMemo(() => {
     const seen = new Set<string>();
-    const out: string[] = [];
-    for (const p of previews) {
-      for (const label of p.labels) {
+    const out: { number: string; notes?: string }[] = [];
+    rows.forEach((r, i) => {
+      const note = r.note.trim() || undefined;
+      for (const label of previews[i].labels) {
         const key = label.toLowerCase();
         if (existing.has(key) || seen.has(key)) continue;
         seen.add(key);
-        out.push(label);
+        out.push({ number: label, notes: note });
       }
-    }
+    });
     return out;
-  }, [previews, existing]);
+  }, [rows, previews, existing]);
 
   const setRow = (id: string, patch: Partial<SequenceRow>) =>
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
   const addRow = () =>
-    setRows((prev) => [...prev, { id: uid(), start: "", upTo: "" }]);
+    setRows((prev) => [...prev, { id: uid(), start: "", upTo: "", note: "" }]);
 
   const deleteRow = (id: string) =>
     setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
@@ -105,7 +117,7 @@ export function DropSequenceBuilder() {
       st.setActiveSheet(sheet.id);
       const w = sheet.pageWidth ?? 612;
       const h = sheet.pageHeight ?? 792;
-      toAdd.forEach((number, i) => {
+      toAdd.forEach((d, i) => {
         const row = Math.floor(i / PER_ROW);
         const col = i % PER_ROW;
         const x = w * 0.08 + (col * (w * 0.84)) / (PER_ROW - 1);
@@ -114,18 +126,29 @@ export function DropSequenceBuilder() {
           kind: "drop",
           id: uid(),
           layer: "drop",
-          number,
+          number: d.number,
           faceplateId: "",
           x,
           y,
           service: "data",
+          ...(d.notes ? { notes: d.notes } : {}),
         } as DropMarkup);
       });
+      // Read back what actually landed — the count reported is the
+      // count in the project, not the count attempted.
+      const fresh = useProjectStore.getState().project;
+      const landed = new Set(
+        (fresh ? allDropMarkups(fresh) : []).map((m) =>
+          m.number.trim().toLowerCase(),
+        ),
+      );
+      const added = toAdd.filter((d) => landed.has(d.number.toLowerCase())).length;
       const expanded = previews.reduce((acc, p) => acc + p.labels.length, 0);
       const skipped = expanded - toAdd.length;
-      const msg = `Added ${toAdd.length} drop${toAdd.length === 1 ? "" : "s"} on ${sheet.name}${skipped > 0 ? ` — ${skipped} already existed, skipped` : ""}.`;
+      const missing = toAdd.length - added;
+      const msg = `Added ${added} drop${added === 1 ? "" : "s"} on ${sheet.name}${skipped > 0 ? ` — ${skipped} already existed, skipped` : ""}${missing > 0 ? ` — ${missing} did not land, try again` : ""}.`;
       setResult(`${msg} Attach them to ports in the Patch Panels tab.`);
-      st.pushToast("success", msg);
+      st.pushToast(missing > 0 ? "error" : "success", msg);
     } finally {
       setBusy(false);
     }
@@ -145,6 +168,9 @@ export function DropSequenceBuilder() {
             FCAM-022. Works for every label family: type the prefix
             yourself, there is no list to pick from.
           </p>
+          <div className="text-[11px] text-ink-400 mt-1">
+            {dropCount} drop{dropCount === 1 ? "" : "s"} in this project.
+          </div>
         </div>
 
         {!sheet ? (
@@ -204,6 +230,14 @@ export function DropSequenceBuilder() {
                           : ""}
                       </div>
                     ) : null}
+                    <input
+                      value={r.note}
+                      onChange={(e) => setRow(r.id, { note: e.target.value })}
+                      placeholder="Note — optional, shows on the patch panel"
+                      className="input w-full"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
                   </div>
                 );
               })}

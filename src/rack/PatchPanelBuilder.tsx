@@ -86,6 +86,13 @@ export function PatchPanelBuilder() {
 
   const assignedCount = links.filter((l) => l.dropId).length;
 
+  // Drops with no port yet — shown on this tab even before any port
+  // is patched, so a fresh import never looks like it vanished.
+  const unassigned = useMemo(
+    () => options.filter((d) => !dropLink.has(d.id)),
+    [options, dropLink],
+  );
+
   return (
     <div className="flex-1 overflow-auto workspace-grid">
       <div className="max-w-3xl mx-auto w-full p-6 space-y-4">
@@ -170,6 +177,9 @@ export function PatchPanelBuilder() {
                     toP && toDev
                       ? `${placementPatchName(toP, toDev)} / P ${l.toPort}`
                       : "—";
+                  const assignedDrop = l.dropId
+                    ? dropById.get(l.dropId)
+                    : undefined;
                   return (
                     <div
                       key={l.id}
@@ -178,35 +188,46 @@ export function PatchPanelBuilder() {
                       <span className="text-xs text-ink-100 font-mono">
                         Port {l.fromPort}
                       </span>
-                      <select
-                        className="input"
-                        value={l.dropId ?? ""}
-                        onChange={(e) =>
-                          assignDrop(
-                            rack.id,
-                            l.id,
-                            e.target.value || undefined,
-                          )
-                        }
-                      >
-                        <option value="">— no drop —</option>
-                        {options.map((d) => {
-                          const current = dropLink.get(d.id);
-                          const suffix =
-                            current && current.id !== l.id
-                              ? ` — on ${currentLabel(current, rack)}`
-                              : "";
-                          return (
-                            <option key={d.id} value={d.id}>
-                              {dropDisplayNumber(d)}
-                              {d.label && d.label !== d.number
-                                ? ` (${d.label})`
-                                : ""}
-                              {suffix}
-                            </option>
-                          );
-                        })}
-                      </select>
+                      <div className="min-w-0">
+                        <select
+                          className="input w-full"
+                          value={l.dropId ?? ""}
+                          onChange={(e) =>
+                            assignDrop(
+                              rack.id,
+                              l.id,
+                              e.target.value || undefined,
+                            )
+                          }
+                        >
+                          <option value="">— no drop —</option>
+                          {options.map((d) => {
+                            const current = dropLink.get(d.id);
+                            const suffix =
+                              current && current.id !== l.id
+                                ? ` — on ${currentLabel(current, rack)}`
+                                : "";
+                            return (
+                              <option key={d.id} value={d.id}>
+                                {dropDisplayNumber(d)}
+                                {d.label && d.label !== d.number
+                                  ? ` (${d.label})`
+                                  : ""}
+                                {d.notes?.trim() ? ` — ${d.notes.trim()}` : ""}
+                                {suffix}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        {assignedDrop?.notes?.trim() ? (
+                          <div
+                            className="text-[11px] text-ink-400 truncate px-1 pt-0.5"
+                            title={assignedDrop.notes.trim()}
+                          >
+                            {assignedDrop.notes.trim()}
+                          </div>
+                        ) : null}
+                      </div>
                       <span className="text-xs text-ink-200">{toName}</span>
                     </div>
                   );
@@ -220,6 +241,30 @@ export function PatchPanelBuilder() {
               </div>
             )}
           </>
+        )}
+
+        {unassigned.length > 0 && (
+          <div className="panel rounded-lg p-3 space-y-1">
+            <div className="label">
+              Unassigned drops — {unassigned.length} waiting for a port
+            </div>
+            <div className="text-xs text-ink-200 leading-relaxed">
+              {unassigned.map((d) => (
+                <span key={d.id} className="inline-block mr-3">
+                  <span className="font-mono">{dropDisplayNumber(d)}</span>
+                  {d.notes?.trim() ? (
+                    <span className="text-ink-400"> — {d.notes.trim()}</span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+            {rack && links.length === 0 && (
+              <div className="text-[11px] text-ink-400">
+                Patch ports in the Racks view first, then attach these drops
+                here.
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
