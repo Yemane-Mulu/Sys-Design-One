@@ -297,25 +297,35 @@ export function buildSurveyorRackPlacements(plan: RackPlan): RackPlacement[] {
 export interface SurveyorImportSource {
   bytes: Uint8Array;
   filename: string;
+  /** "pdf" for a report, "image" for a plan picture (PNG/JPG/WebP). */
+  kind: "pdf" | "image";
   /** Sheets the upload just created — drops stage on the first one. */
   sheetIds: string[];
 }
 
+/** Image extensions the vision import takes. TIFF is out — browsers
+ *  cannot display it in the review overlay or draw it to a canvas. */
+const IMAGE_EXT_RE = /\.(png|jpe?g|webp)$/i;
+
 /**
- * Upload a client's System Surveyor PDF from the dedicated import
- * button: ingest it as sheets, then open the review modal. The user
- * chose this path, so no detection runs — if the file turns out to have
- * no device table, the modal says so. Dynamic imports keep this module
- * importable in non-browser runtimes (tests).
+ * Upload a client's System Surveyor PDF — or a picture of the plan —
+ * from the dedicated import button: ingest it as sheets, then open the
+ * review modal. The user chose this path, so no detection runs. PDFs
+ * go through the table reader first (vision is offered when there is
+ * no table); pictures skip straight to the vision read. Dynamic
+ * imports keep this module importable in non-browser runtimes (tests).
  */
-export async function uploadSurveyorPdf(file: File): Promise<void> {
+export async function uploadSurveyorFile(file: File): Promise<void> {
   const { useProjectStore } = await import("../store/projectStore");
   const { ingestFile } = await import("./ingest");
   const st = useProjectStore.getState();
-  if (!/\.pdf$/i.test(file.name)) {
-    st.pushToast("error", "Pick a PDF report.");
+  const isPdf = /\.pdf$/i.test(file.name);
+  const isImage = IMAGE_EXT_RE.test(file.name);
+  if (!isPdf && !isImage) {
+    st.pushToast("error", "Pick a PDF report or a plan picture (PNG / JPG / WebP).");
     return;
   }
+  const kind: "pdf" | "image" = isPdf ? "pdf" : "image";
   let bytes: Uint8Array;
   try {
     bytes = new Uint8Array(await file.arrayBuffer());
@@ -336,15 +346,17 @@ export async function uploadSurveyorPdf(file: File): Promise<void> {
   st.setSurveyorImport({
     bytes,
     filename: file.name,
+    kind,
     sheetIds: sheets.map((s) => s.id),
   });
 }
 
-// ───────── Vision import (single-page layout PDFs) ─────────
+// ───────── Vision import (single-page layout PDFs + plan pictures) ─────────
 //
 // Some clients only have the one-page layout — no BOM table for the
-// no-AI parser to read. For those, the page is rendered to an image and
-// sent to the vision Worker (OpenRouter key lives there as a secret).
+// no-AI parser to read — or just a picture of the plan. For those, the
+// page is rendered to an image (or the picture is used as-is) and sent
+// to the vision Worker (OpenRouter key lives there as a secret).
 // The model only READS labels and the legend; it classifies nothing.
 // The user assigns each label a device type in the review popup, the
 // counts are checked against the legend there, and drops are saved
@@ -407,6 +419,51 @@ export async function renderSurveyorPageImage(
   const scale = Math.min(3, 2000 / viewport.width);
   const { canvas } = await renderPageToCanvas(page, scale);
   return { dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height };
+}
+
+/** MIME type for an uploaded plan picture, from its filename. */
+function mimeForFilename(filename: string): string {
+  if (/\.png$/i.test(filename)) return "image/png";
+  if (/\.jpe?g$/i.test(filename)) return "image/jpeg";
+  if (/\.webp$/i.test(filename)) return "image/webp";
+  return "image/png";
+}
+
+/** Uploaded picture bytes as a data URL, for the vision call and the
+ *  review overlay. Pure bytes-to-base64 — no DOM, safe in tests. */
+export function imageBytesToDataUrl(bytes: Uint8Array, filename: string): string {
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return `data:${mimeForFilename(filename)};base64,${btoa(binary)}`;
+}
+
+/** Shrink a plan picture to at most 2000px wide (same cap as the PDF
+ *  render) so a phone photo stays under the Worker's size limit and
+ *  the token cost stays near a cent. Small pictures pass through
+ *  untouched. Browser-only — canvas. */
+export async function downscaleImageDataUrl(
+  dataUrl: string,
+  maxWidth = 2000,
+): Promise<string> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () =>
+      reject(new Error("Could not read this picture — try a PNG or JPG."));
+    el.src = dataUrl;
+  });
+  if (img.naturalWidth <= maxWidth) return dataUrl;
+  const scale = maxWidth / img.naturalWidth;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.naturalWidth * scale);
+  canvas.height = Math.round(img.naturalHeight * scale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return dataUrl;
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/png");
 }
 
 /** Call the vision proxy (same-origin Worker). Throws an Error whose

@@ -1342,10 +1342,13 @@ interface State {
   /** A just-uploaded PDF that looks like a System Surveyor report, held
    *  for the import review modal (no-AI BOM parse → drops + rack plan).
    *  `null` when no import is pending. Bytes live here only, never in
-   *  the persisted project. */
+   *  the persisted project. `kind` is "image" when the upload is a plan
+   *  picture (PNG/JPG/WebP) — those skip the table reader and go
+   *  straight to the vision read. */
   surveyorImport: {
     bytes: Uint8Array;
     filename: string;
+    kind: "pdf" | "image";
     /** Sheets the upload just created — drops stage on the first one. */
     sheetIds: string[];
   } | null;
@@ -1353,6 +1356,7 @@ interface State {
     v: {
       bytes: Uint8Array;
       filename: string;
+      kind: "pdf" | "image";
       sheetIds: string[];
     } | null,
   ) => void;

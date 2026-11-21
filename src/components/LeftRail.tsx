@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useProjectStore, type MarkupKind } from "../store/projectStore";
 import { ingestFile } from "../lib/ingest";
-import { uploadSurveyorPdf } from "../lib/systemSurveyor";
+import { uploadSurveyorFile } from "../lib/systemSurveyor";
 import { SUPPORTED_ACCEPT, SUPPORTED_HINT } from "../lib/sheetSource";
 import { importProjectFile } from "../lib/projectFile";
 import { enqueueIngest } from "../lib/ingestQueue";
@@ -97,10 +97,10 @@ export function LeftRail({ className = "" }: { className?: string }) {
 
   // Dedicated System Surveyor import — its own button, no auto-detection
   // on normal uploads. Reads the report's bill of materials (no AI) into
-  // drops + a rack plan.
+  // drops + a rack plan; a plan picture goes straight to the AI read.
   const onPickSurveyorFile = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    await uploadSurveyorPdf(files[0]);
+    await uploadSurveyorFile(files[0]);
   };
 
   return (
@@ -160,13 +160,13 @@ export function LeftRail({ className = "" }: { className?: string }) {
             </label>
             <label
               className="btn w-full justify-center cursor-pointer"
-              title="Upload a client's System Surveyor PDF report — drops and a rack plan are read from its bill of materials, no AI."
+              title="Upload a client's System Surveyor PDF report or a picture of the plan — drops and a rack plan are read from its bill of materials, no AI; a picture goes straight to the AI read."
             >
               <FileDown className="w-4 h-4" />
-              Import System Surveyor PDF
+              Import System Surveyor
               <input
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.png,.jpg,.jpeg,.webp"
                 className="hidden"
                 onChange={(e) => onPickSurveyorFile(e.target.files)}
               />

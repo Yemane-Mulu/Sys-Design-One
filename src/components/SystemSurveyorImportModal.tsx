@@ -18,7 +18,9 @@ import {
 import {
   analyzeSurveyorPage,
   buildSurveyorRackPlacements,
+  downscaleImageDataUrl,
   extractSurveyorText,
+  imageBytesToDataUrl,
   parseSurveyorPages,
   planRackForSurveyor,
   renderSurveyorPageImage,
@@ -99,6 +101,14 @@ export function SystemSurveyorImportModal() {
     const bytes = imp.bytes.slice();
     bytesRef.current = bytes;
     let cancelled = false;
+    // A plan picture has no text layer to read — it skips the table
+    // reader and goes straight to the vision read.
+    if (imp.kind === "image") {
+      void analyzeVision();
+      return () => {
+        cancelled = true;
+      };
+    }
     (async () => {
       try {
         const pages = await extractSurveyorText(bytes);
@@ -146,7 +156,8 @@ export function SystemSurveyorImportModal() {
 
   // ── Vision (single-page layout, no device table) ──
 
-  /** Render the page and ask the Worker to read the labels off it. */
+  /** Render the page — or use the uploaded picture — and ask the Worker
+   *  to read the labels off it. */
   const analyzeVision = async () => {
     if (!imp || busy) return;
     setBusy(true);
@@ -155,7 +166,10 @@ export function SystemSurveyorImportModal() {
     try {
       const bytes = bytesRef.current;
       if (!bytes) throw new Error("The upload is no longer available — close and re-upload.");
-      const { dataUrl } = await renderSurveyorPageImage(bytes.slice());
+      const dataUrl =
+        imp.kind === "image"
+          ? await downscaleImageDataUrl(imageBytesToDataUrl(bytes.slice(), imp.filename))
+          : (await renderSurveyorPageImage(bytes.slice())).dataUrl;
       const result = await analyzeSurveyorPage(dataUrl);
       setVisionImage(dataUrl);
       setVisionKey(result.key);
@@ -256,7 +270,7 @@ export function SystemSurveyorImportModal() {
       );
       if (plan.networkPorts > 0) {
         const stem =
-          imp.filename.replace(/\.pdf$/i, "").split(/[\\/]/).pop() ?? "Import";
+          imp.filename.replace(/\.[^.]+$/, "").split(/[\\/]/).pop() ?? "Import";
         st.addRack({
           name: stem.slice(0, 40),
           uHeight: plan.rackU,
