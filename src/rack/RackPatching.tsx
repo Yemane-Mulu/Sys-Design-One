@@ -72,6 +72,22 @@ export function RackPatching({ rack, onSelectPlacement }: Props) {
   const panelPorts = panelDev ? patchablePorts(panelDev) : [];
   const switchPorts = switchDev ? patchablePorts(switchDev) : [];
 
+  // Drop terminated on each port of the selected panel, for the hover
+  // label — from the link once the port is patched, from panelPortDrops
+  // before that.
+  const panelPortDrop = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const d of rack.panelPortDrops ?? []) {
+      if (d.placementId === panel?.id) m.set(d.port, d.dropId);
+    }
+    for (const l of links) {
+      if (l.fromPlacementId === panel?.id && l.dropId) {
+        m.set(l.fromPort, l.dropId);
+      }
+    }
+    return m;
+  }, [rack, panel, links]);
+
   const linkForPanelPort = (port: number) =>
     links.find((l) => l.fromPlacementId === panel?.id && l.fromPort === port);
   const linkForSwitchPort = (port: number) =>
@@ -197,20 +213,28 @@ export function RackPatching({ rack, onSelectPlacement }: Props) {
               {panel ? placementPatchName(panel, panelDev!) : "Panel"} — ports
             </div>
             <div className="grid grid-cols-12 gap-1">
-              {panelPorts.map((n) => (
-                <PortCell
-                  key={n}
-                  n={n}
-                  state={
-                    selPort === n
-                      ? "selected"
-                      : linkForPanelPort(n)
-                        ? "patched"
-                        : "free"
-                  }
-                  onClick={() => onPanelPortClick(n)}
-                />
-              ))}
+              {panelPorts.map((n) => {
+                const dropId = panelPortDrop.get(n);
+                return (
+                  <PortCell
+                    key={n}
+                    n={n}
+                    state={
+                      selPort === n
+                        ? "selected"
+                        : linkForPanelPort(n)
+                          ? "patched"
+                          : "free"
+                    }
+                    label={
+                      dropId
+                        ? dropDisplayNumber(dropById.get(dropId))
+                        : undefined
+                    }
+                    onClick={() => onPanelPortClick(n)}
+                  />
+                );
+              })}
             </div>
           </div>
 
@@ -353,16 +377,19 @@ export function RackPatching({ rack, onSelectPlacement }: Props) {
 function PortCell({
   n,
   state,
+  label,
   onClick,
 }: {
   n: number;
   state: "free" | "patched" | "selected" | "dest";
+  /** Drop terminated on this port, shown on hover. */
+  label?: string;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      title={`Port ${n}`}
+      title={label ? `Port ${n} — ${label}` : `Port ${n}`}
       className={`aspect-square rounded-[3px] text-[9px] font-mono flex items-center justify-center border transition-colors ${
         state === "patched"
           ? "bg-amber-knox text-midnight border-amber-knox font-bold"

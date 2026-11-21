@@ -187,6 +187,20 @@ export interface RackPatchLink {
   dropId?: string;
 }
 
+/** A drop terminated on a patch panel port that is not patched to a
+ *  switch yet. The panel port is the anchor: a drop lands here first
+ *  and the switch patch can come later — when it does, the drop rides
+ *  onto the link. One drop per port; assigning a drop already on
+ *  another port moves it. */
+export interface PanelPortDrop {
+  /** placement id of the patch panel */
+  placementId: string;
+  /** panel port number (1-based) */
+  port: number;
+  /** drop markup id terminated on this port */
+  dropId: string;
+}
+
 export interface Rack {
   id: string;
   /** Optional source Rack device markup that generated this rack from the plan. */
@@ -201,6 +215,9 @@ export interface Rack {
   placements: RackPlacement[];
   /** Patch panel -> switch port links, printed on the elevation. */
   patchLinks?: RackPatchLink[];
+  /** Drops terminated on panel ports that are not patched to a switch
+   *  yet. When a port gets patched, its drop moves onto the link. */
+  panelPortDrops?: PanelPortDrop[];
   /** Created/updated timestamps for sorting */
   createdAt: number;
   updatedAt: number;
@@ -1482,10 +1499,21 @@ interface State {
   removePatchLink: (rackId: string, linkId: string) => void;
   /** Attach a drop to a patch link (`undefined` clears it). One drop per
    *  link: assigning a drop already on another link in the same rack
-   *  moves it here. */
+   *  moves it here (and pulls it off a panel port too). */
   assignPatchLinkDrop: (
     rackId: string,
     linkId: string,
+    dropId: string | undefined,
+  ) => void;
+  /** Attach a drop to a patch panel port (`undefined` clears it) —
+   *  the drop-first step. When the port already has a switch link the
+   *  drop lands on the link; otherwise it waits on the port as a
+   *  panelPortDrop until the port is patched. One drop per port:
+   *  assigning a drop already on another port moves it here. */
+  assignPanelPortDrop: (
+    rackId: string,
+    placementId: string,
+    port: number,
     dropId: string | undefined,
   ) => void;
 
@@ -1750,6 +1778,66 @@ function applyFlowHints(
   const next = reduceFlowHint(enabled, step, event);
   if (next.markGlobalDone) markFlowHintsGloballyDone();
   return { flowHintStep: next.step, flowHintsEnabled: next.enabled };
+}
+
+/** Merge new panel -> switch links into a rack, keeping each panel
+ *  port's drop attached to the port no matter which side changes:
+ *  - a new link for a port inherits the drop terminated on that port
+ *    (from a panelPortDrop entry, or from the link it replaces);
+ *  - a replaced link whose switch port is taken over keeps its drop
+ *    terminated on its own panel port, as a panelPortDrop entry. */
+function applyPatchLinks(
+  rack: Rack,
+  links: RackPatchLink[],
+): { patchLinks: RackPatchLink[]; panelPortDrops: PanelPortDrop[] } {
+  let next = [...(rack.patchLinks ?? [])];
+  let portDrops = [...(rack.panelPortDrops ?? [])];
+  for (const raw of links) {
+    const link = { ...raw };
+    // The drop terminated on this panel port rides onto the new link.
+    const portDropIdx = portDrops.findIndex(
+      (d) =>
+        d.placementId === link.fromPlacementId && d.port === link.fromPort,
+    );
+    if (portDropIdx >= 0) {
+      if (!link.dropId) link.dropId = portDrops[portDropIdx].dropId;
+      portDrops.splice(portDropIdx, 1);
+    }
+    const replaced = next.filter(
+      (l) =>
+        (l.fromPlacementId === link.fromPlacementId &&
+          l.fromPort === link.fromPort) ||
+        (l.toPlacementId === link.toPlacementId &&
+          l.toPort === link.toPort),
+    );
+    for (const old of replaced) {
+      if (!old.dropId) continue;
+      if (
+        old.fromPlacementId === link.fromPlacementId &&
+        old.fromPort === link.fromPort
+      ) {
+        // Same panel port, new switch: the drop stays on the port.
+        if (!link.dropId) link.dropId = old.dropId;
+      } else if (
+        !portDrops.some(
+          (d) =>
+            d.placementId === old.fromPlacementId &&
+            d.port === old.fromPort,
+        )
+      ) {
+        // Its switch port was taken over: the drop stays terminated on
+        // its own panel port.
+        portDrops.push({
+          placementId: old.fromPlacementId,
+          port: old.fromPort,
+          dropId: old.dropId,
+        });
+      }
+    }
+    next = next.filter((l) => !replaced.includes(l));
+    next.push(link);
+  }
+  return { patchLinks: next, panelPortDrops: portDrops };
 }
 
 export const useProjectStore = create<State>()(
@@ -2433,6 +2521,7 @@ export const useProjectStore = create<State>()(
           associatedSheetId: rack?.associatedSheetId,
           placements: rack?.placements ?? [],
           patchLinks: rack?.patchLinks ?? [],
+          panelPortDrops: rack?.panelPortDrops ?? [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
@@ -2528,6 +2617,11 @@ export const useProjectStore = create<State>()(
                         l.fromPlacementId !== placementId &&
                         l.toPlacementId !== placementId,
                     ),
+                    // So are drops terminated on its ports — the port
+                    // itself is gone, so the drop is unassigned again.
+                    panelPortDrops: (r.panelPortDrops ?? []).filter(
+                      (d) => d.placementId !== placementId,
+                    ),
                     updatedAt: Date.now(),
                   }
                 : r,
@@ -2547,22 +2641,7 @@ export const useProjectStore = create<State>()(
             ...s.project,
             racks: (s.project.racks ?? []).map((r) =>
               r.id === rackId
-                ? {
-                    ...r,
-                    patchLinks: [
-                      ...(r.patchLinks ?? []).filter(
-                        (l) =>
-                          !(
-                            (l.fromPlacementId === link.fromPlacementId &&
-                              l.fromPort === link.fromPort) ||
-                            (l.toPlacementId === link.toPlacementId &&
-                              l.toPort === link.toPort)
-                          ),
-                      ),
-                      link,
-                    ],
-                    updatedAt: Date.now(),
-                  }
+                ? { ...r, ...applyPatchLinks(r, [link]), updatedAt: Date.now() }
                 : r,
             ),
             updatedAt: Date.now(),
@@ -2576,23 +2655,11 @@ export const useProjectStore = create<State>()(
         return {
           project: {
             ...s.project,
-            racks: (s.project.racks ?? []).map((r) => {
-              if (r.id !== rackId) return r;
-              let next = [...(r.patchLinks ?? [])];
-              for (const link of links) {
-                next = next.filter(
-                  (l) =>
-                    !(
-                      (l.fromPlacementId === link.fromPlacementId &&
-                        l.fromPort === link.fromPort) ||
-                      (l.toPlacementId === link.toPlacementId &&
-                        l.toPort === link.toPort)
-                    ),
-                );
-                next.push(link);
-              }
-              return { ...r, patchLinks: next, updatedAt: Date.now() };
-            }),
+            racks: (s.project.racks ?? []).map((r) =>
+              r.id === rackId
+                ? { ...r, ...applyPatchLinks(r, links), updatedAt: Date.now() }
+                : r,
+            ),
             updatedAt: Date.now(),
           },
         };
@@ -2604,15 +2671,36 @@ export const useProjectStore = create<State>()(
         return {
           project: {
             ...s.project,
-            racks: (s.project.racks ?? []).map((r) =>
-              r.id === rackId
-                ? {
-                    ...r,
-                    patchLinks: (r.patchLinks ?? []).filter((l) => l.id !== linkId),
-                    updatedAt: Date.now(),
-                  }
-                : r,
-            ),
+            racks: (s.project.racks ?? []).map((r) => {
+              if (r.id !== rackId) return r;
+              const removed = (r.patchLinks ?? []).find(
+                (l) => l.id === linkId,
+              );
+              const portDrops = [...(r.panelPortDrops ?? [])];
+              // Unpatching a port leaves its drop terminated on the port.
+              if (
+                removed?.dropId &&
+                !portDrops.some(
+                  (d) =>
+                    d.placementId === removed.fromPlacementId &&
+                    d.port === removed.fromPort,
+                )
+              ) {
+                portDrops.push({
+                  placementId: removed.fromPlacementId,
+                  port: removed.fromPort,
+                  dropId: removed.dropId,
+                });
+              }
+              return {
+                ...r,
+                patchLinks: (r.patchLinks ?? []).filter(
+                  (l) => l.id !== linkId,
+                ),
+                panelPortDrops: portDrops,
+                updatedAt: Date.now(),
+              };
+            }),
             updatedAt: Date.now(),
           },
         };
@@ -2633,7 +2721,64 @@ export const useProjectStore = create<State>()(
                 if (l.id === linkId) return { ...l, dropId };
                 return l;
               });
-              return { ...r, patchLinks: next, updatedAt: Date.now() };
+              // One drop, one port: pull it off a panel port too.
+              const portDrops = (r.panelPortDrops ?? []).filter(
+                (d) => !(dropId !== undefined && d.dropId === dropId),
+              );
+              return {
+                ...r,
+                patchLinks: next,
+                panelPortDrops: portDrops,
+                updatedAt: Date.now(),
+              };
+            }),
+            updatedAt: Date.now(),
+          },
+        };
+      }),
+
+    assignPanelPortDrop: (rackId, placementId, port, dropId) =>
+      set((s) => {
+        if (!s.project) return s;
+        return {
+          project: {
+            ...s.project,
+            racks: (s.project.racks ?? []).map((r) => {
+              if (r.id !== rackId) return r;
+              const link = (r.patchLinks ?? []).find(
+                (l) =>
+                  l.fromPlacementId === placementId && l.fromPort === port,
+              );
+              // One drop, one port: pull it off wherever it is now.
+              const links = (r.patchLinks ?? []).map((l) => {
+                if (
+                  dropId !== undefined &&
+                  l.dropId === dropId &&
+                  l.id !== link?.id
+                ) {
+                  return { ...l, dropId: undefined };
+                }
+                if (link && l.id === link.id) return { ...l, dropId };
+                return l;
+              });
+              let portDrops = (r.panelPortDrops ?? []).filter(
+                (d) => !(dropId !== undefined && d.dropId === dropId),
+              );
+              // This port's own entry is replaced by the new assignment —
+              // or dropped entirely when clearing, or when the port is
+              // patched and the link carries the drop instead.
+              portDrops = portDrops.filter(
+                (d) => !(d.placementId === placementId && d.port === port),
+              );
+              if (!link && dropId !== undefined) {
+                portDrops.push({ placementId, port, dropId });
+              }
+              return {
+                ...r,
+                patchLinks: links,
+                panelPortDrops: portDrops,
+                updatedAt: Date.now(),
+              };
             }),
             updatedAt: Date.now(),
           },

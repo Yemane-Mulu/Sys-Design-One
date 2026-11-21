@@ -1,21 +1,21 @@
-// Patch Panels view — assign drops to patched ports, one table per
-// panel. The rack picker is where ports get patched; this tab is where
-// the drops get attached: one drop per link, and picking a drop that is
-// already on another link moves it here. Rows are the panel's patched
-// ports only — patch a port in the Racks view first. The same links
-// print on the elevation (Drop | Patch panel | Switch), so the tab, the
-// rack, and the printout always agree.
+// Patch Panels view — one table per panel, one row per port. A drop
+// lands on a panel port first and the switch patch can come later, so
+// every port is listed with two slots — Drop and Switch — and either
+// can be filled first. One drop per port; picking a drop that is
+// already on another port moves it here. The same rows print on the
+// elevation (Drop | Patch panel | Switch), so the tab, the rack, and
+// the printout always agree.
 
 import { useEffect, useMemo, useState } from "react";
 import {
   useProjectStore,
   type Rack,
-  type RackPatchLink,
 } from "../store/projectStore";
 import { rackDevicesById } from "../data/rackDevices";
 import { allDropMarkups } from "../lib/dropLabels";
 import {
   dropDisplayNumber,
+  patchablePorts,
   placementPatchName,
 } from "./rackUtils";
 import { Field } from "./RackProperties";
@@ -25,7 +25,7 @@ export function PatchPanelBuilder() {
   const racks = project?.racks ?? [];
   const activeRackId = useProjectStore((s) => s.activeRackId);
   const setActiveRack = useProjectStore((s) => s.setActiveRack);
-  const assignDrop = useProjectStore((s) => s.assignPatchLinkDrop);
+  const assignDrop = useProjectStore((s) => s.assignPanelPortDrop);
 
   const [panelId, setPanelId] = useState("");
 
@@ -76,43 +76,59 @@ export function PatchPanelBuilder() {
     () => new Map(drops.map((d) => [d.id, d])),
     [drops],
   );
-  // Which link each drop is currently on, so the dropdown can say so.
-  const dropLink = useMemo(() => {
-    const m = new Map<string, RackPatchLink>();
-    for (const l of rack?.patchLinks ?? []) {
-      if (l.dropId) m.set(l.dropId, l);
+
+  // Every port on the selected panel — the table lists all of them, not
+  // just the patched ones, because a drop lands on a port first and the
+  // switch patch can come later.
+  const ports = useMemo(
+    () => (panelDev ? patchablePorts(panelDev) : []),
+    [panelDev],
+  );
+
+  // The drop on each panel port, from either source: the link carries
+  // it once the port is patched, a panelPortDrop holds it before that.
+  const portDrop = useMemo(() => {
+    const byPort = new Map<string, string>();
+    const byDrop = new Map<string, { placementId: string; port: number }>();
+    for (const d of rack?.panelPortDrops ?? []) {
+      byPort.set(`${d.placementId}:${d.port}`, d.dropId);
+      byDrop.set(d.dropId, { placementId: d.placementId, port: d.port });
     }
-    return m;
+    for (const l of rack?.patchLinks ?? []) {
+      if (!l.dropId) continue;
+      byPort.set(`${l.fromPlacementId}:${l.fromPort}`, l.dropId);
+      byDrop.set(l.dropId, {
+        placementId: l.fromPlacementId,
+        port: l.fromPort,
+      });
+    }
+    return { byPort, byDrop };
   }, [rack]);
+
+  const dropForPort = (port: number) =>
+    panel ? portDrop.byPort.get(`${panel.id}:${port}`) : undefined;
 
   // Unassigned drops first — those are the ones still waiting for a port.
   const options = useMemo(
     () =>
       [...drops].sort((a, b) => {
-        const au = dropLink.has(a.id) ? 1 : 0;
-        const bu = dropLink.has(b.id) ? 1 : 0;
+        const au = portDrop.byDrop.has(a.id) ? 1 : 0;
+        const bu = portDrop.byDrop.has(b.id) ? 1 : 0;
         if (au !== bu) return au - bu;
         return (a.number || "").localeCompare(b.number || "");
       }),
-    [drops, dropLink],
+    [drops, portDrop],
   );
 
-  const assignedCount = links.filter((l) => l.dropId).length;
-
-  // The first other panel in this rack that already has patched ports —
-  // the empty state names it, so the patches are findable.
-  const otherWithLinks = panels.find(
-    (p) => p.id !== panel?.id && (linkCounts.get(p.id) ?? 0) > 0,
-  );
-  const otherWithLinksCount = otherWithLinks
-    ? linkCounts.get(otherWithLinks.id) ?? 0
-    : 0;
+  const assignedCount = ports.filter(
+    (p) => dropForPort(p) !== undefined,
+  ).length;
 
   // Drops with no port yet — shown on this tab even before any port
   // is patched, so a fresh import never looks like it vanished.
   const unassigned = useMemo(
-    () => options.filter((d) => !dropLink.has(d.id)),
-    [options, dropLink],
+    () => options.filter((d) => !portDrop.byDrop.has(d.id)),
+    [options, portDrop],
   );
 
   return (
@@ -121,9 +137,11 @@ export function PatchPanelBuilder() {
         <div>
           <h1 className="text-lg font-semibold text-ink-50">Patch Panels</h1>
           <p className="text-xs text-ink-400 leading-relaxed">
-            Attach a drop to each patched port. One drop per port — picking a
-            drop that is already on another port moves it here. The table
-            prints on the elevation as Drop | Patch panel | Switch.
+            Attach a drop to a panel port, then patch the port to a switch
+            — either order works. A drop on a port with no switch yet just
+            waits there. One drop per port — picking a drop that is already
+            on another port moves it here. The table prints on the
+            elevation as Drop | Patch panel | Switch.
           </p>
         </div>
 
@@ -171,32 +189,15 @@ export function PatchPanelBuilder() {
               <div className="panel rounded-lg p-6 text-sm text-ink-300 text-center">
                 This rack has no patch panels — add one in the Racks view first.
               </div>
-            ) : !panel ? null : links.length === 0 ? (
-              <div className="panel rounded-lg p-6 text-sm text-ink-300 text-center">
-                No patched ports on{" "}
-                {placementPatchName(panel, panelDev!)} yet —{" "}
-                {otherWithLinks ? (
-                  <>
-                    {placementPatchName(
-                      otherWithLinks,
-                      rackDevicesById[otherWithLinks.deviceId]!,
-                    )}{" "}
-                    has {otherWithLinksCount} patched port
-                    {otherWithLinksCount === 1 ? "" : "s"}. Switch panels
-                    above to attach drops.
-                  </>
-                ) : (
-                  "patch ports in the Racks view first, then come back here to attach drops."
-                )}
-              </div>
-            ) : (
+            ) : !panel ? null : (
               <div className="panel rounded-lg p-3 space-y-2">
                 <div className="flex items-baseline justify-between">
                   <div className="label">
-                    {placementPatchName(panel, panelDev!)} — patched ports
+                    {placementPatchName(panel, panelDev!)} — {ports.length}{" "}
+                    ports
                   </div>
                   <div className="text-[11px] text-ink-400">
-                    {links.length} patched · {assignedCount} drops assigned
+                    {links.length} patched · {assignedCount} drops attached
                   </div>
                 </div>
                 <div className="grid grid-cols-[64px_1fr_1fr] gap-2 items-center text-[11px] font-medium text-ink-400 px-1">
@@ -204,46 +205,53 @@ export function PatchPanelBuilder() {
                   <span>Drop</span>
                   <span>Switch</span>
                 </div>
-                {links.map((l) => {
-                  const toP = rack.placements.find(
-                    (p) => p.id === l.toPlacementId,
-                  );
+                {ports.map((port) => {
+                  const link = links.find((l) => l.fromPort === port);
+                  const toP = link
+                    ? rack.placements.find((p) => p.id === link.toPlacementId)
+                    : undefined;
                   const toDev = toP
                     ? rackDevicesById[toP.deviceId]
                     : undefined;
                   const toName =
-                    toP && toDev
-                      ? `${placementPatchName(toP, toDev)} / P ${l.toPort}`
-                      : "—";
-                  const assignedDrop = l.dropId
-                    ? dropById.get(l.dropId)
+                    link && toP && toDev
+                      ? `${placementPatchName(toP, toDev)} / P ${link.toPort}`
+                      : "Not patched";
+                  const dropId = dropForPort(port);
+                  const assignedDrop = dropId
+                    ? dropById.get(dropId)
                     : undefined;
                   return (
                     <div
-                      key={l.id}
+                      key={port}
                       className="grid grid-cols-[64px_1fr_1fr] gap-2 items-center px-1 py-1 rounded-md hover:bg-white/5"
                     >
                       <span className="text-xs text-ink-100 font-mono">
-                        Port {l.fromPort}
+                        Port {port}
                       </span>
                       <div className="min-w-0">
                         <select
                           className="input w-full"
-                          value={l.dropId ?? ""}
+                          value={dropId ?? ""}
                           onChange={(e) =>
                             assignDrop(
                               rack.id,
-                              l.id,
+                              panel.id,
+                              port,
                               e.target.value || undefined,
                             )
                           }
                         >
                           <option value="">— no drop —</option>
                           {options.map((d) => {
-                            const current = dropLink.get(d.id);
+                            const current = portDrop.byDrop.get(d.id);
                             const suffix =
-                              current && current.id !== l.id
-                                ? ` — on ${currentLabel(current, rack)}`
+                              current &&
+                              !(
+                                current.placementId === panel.id &&
+                                current.port === port
+                              )
+                                ? ` — on ${portLabel(current.placementId, current.port, rack)}`
                                 : "";
                             return (
                               <option key={d.id} value={d.id}>
@@ -266,7 +274,15 @@ export function PatchPanelBuilder() {
                           </div>
                         ) : null}
                       </div>
-                      <span className="text-xs text-ink-200">{toName}</span>
+                      <span
+                        className={
+                          link
+                            ? "text-xs text-ink-200"
+                            : "text-xs text-ink-400 italic"
+                        }
+                      >
+                        {toName}
+                      </span>
                     </div>
                   );
                 })}
@@ -296,12 +312,6 @@ export function PatchPanelBuilder() {
                 </span>
               ))}
             </div>
-            {rack && links.length === 0 && (
-              <div className="text-[11px] text-ink-400">
-                Patch ports in the Racks view first, then attach these drops
-                here.
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -309,11 +319,15 @@ export function PatchPanelBuilder() {
   );
 }
 
-/** Short "PP 2 Port 3" label for where a drop is currently patched. */
-function currentLabel(link: RackPatchLink, rack: Rack): string {
-  const p = rack.placements.find((x) => x.id === link.fromPlacementId);
+/** Short "PP Port 3" label for where a drop is currently attached. */
+function portLabel(
+  placementId: string,
+  port: number,
+  rack: Rack,
+): string {
+  const p = rack.placements.find((x) => x.id === placementId);
   if (!p) return "";
   const dev = rackDevicesById[p.deviceId];
   if (!dev) return "";
-  return `${placementPatchName(p, dev)} Port ${link.fromPort}`;
+  return `${placementPatchName(p, dev)} Port ${port}`;
 }

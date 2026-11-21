@@ -204,11 +204,11 @@ export function dropDisplayNumber(drop: DropMarkup | undefined): string {
   return drop.number?.trim() || drop.label?.trim() || "";
 }
 
-/** One row of the printed patch table: a panel port, the drop patched
- *  to it ("" when none is assigned yet — the row still prints, with a
- *  blank drop cell), and the switch port it patches to, all by short
- *  name — e.g. { drop: "NJCK-022", panel: "PP 1", switch: "SW 1 / P 1" }.
- *  Rows run panel top-down (highest U first), then by port number. */
+/** One row of the printed patch table: a panel port, the drop on it
+ *  ("" when none is assigned yet) and the switch port it patches to
+ *  ("" when the port is not patched yet — a drop-first port still
+ *  prints, with a blank switch cell). Rows run panel top-down
+ *  (highest U first), then by port number. */
 export interface PatchTableRow {
   drop: string;
   panel: string;
@@ -221,24 +221,56 @@ export function patchTableRows(
   dropsById?: Map<string, DropMarkup>,
 ): PatchTableRow[] {
   const byId = new Map(rack.placements.map((p) => [p.id, p]));
-  const links = [...(rack.patchLinks ?? [])].sort((a, b) => {
-    const ua = byId.get(a.fromPlacementId)?.uSlot ?? 0;
-    const ub = byId.get(b.fromPlacementId)?.uSlot ?? 0;
+  // One row per panel port that has a drop, a switch patch, or both.
+  const byPort = new Map<
+    string,
+    { placementId: string; port: number; dropId?: string; link?: RackPatchLink }
+  >();
+  for (const l of rack.patchLinks ?? []) {
+    byPort.set(`${l.fromPlacementId}:${l.fromPort}`, {
+      placementId: l.fromPlacementId,
+      port: l.fromPort,
+      dropId: l.dropId,
+      link: l,
+    });
+  }
+  for (const d of rack.panelPortDrops ?? []) {
+    const key = `${d.placementId}:${d.port}`;
+    const existing = byPort.get(key);
+    if (existing) {
+      if (!existing.dropId) existing.dropId = d.dropId;
+    } else {
+      byPort.set(key, {
+        placementId: d.placementId,
+        port: d.port,
+        dropId: d.dropId,
+      });
+    }
+  }
+  const entries = [...byPort.values()].sort((a, b) => {
+    const ua = byId.get(a.placementId)?.uSlot ?? 0;
+    const ub = byId.get(b.placementId)?.uSlot ?? 0;
     if (ub !== ua) return ub - ua;
-    return a.fromPort - b.fromPort;
+    return a.port - b.port;
   });
   const rows: PatchTableRow[] = [];
-  for (const l of links) {
-    const fromP = byId.get(l.fromPlacementId);
-    const toP = byId.get(l.toPlacementId);
-    if (!fromP || !toP) continue;
+  for (const { placementId, port, dropId, link } of entries) {
+    const fromP = byId.get(placementId);
+    if (!fromP) continue;
     const fromDev = devs[fromP.deviceId];
-    const toDev = devs[toP.deviceId];
-    if (!fromDev || !toDev) continue;
+    if (!fromDev) continue;
+    let switchText = "";
+    if (link) {
+      const toP = byId.get(link.toPlacementId);
+      const toDev = toP ? devs[toP.deviceId] : undefined;
+      if (toP && toDev) {
+        switchText = `${placementPatchName(toP, toDev)} / P ${link.toPort}`;
+      }
+    }
     rows.push({
-      drop: dropDisplayNumber(l.dropId ? dropsById?.get(l.dropId) : undefined),
-      panel: `${placementPatchName(fromP, fromDev)} ${l.fromPort}`,
-      switch: `${placementPatchName(toP, toDev)} / P ${l.toPort}`,
+      drop: dropDisplayNumber(dropId ? dropsById?.get(dropId) : undefined),
+      panel: `${placementPatchName(fromP, fromDev)} ${port}`,
+      switch: switchText,
     });
   }
   return rows;

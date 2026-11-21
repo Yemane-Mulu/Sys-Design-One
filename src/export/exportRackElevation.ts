@@ -817,8 +817,10 @@ function drawSchedule(
     ly -= 14;
   }
 
-  // Patching — three-column table, one row per patched port, by short
-  // name. Only the patched ports, panel top-down then by port number.
+  // Patching — three-column table, one row per panel port that has a
+  // drop, a switch patch, or both. A drop-first port prints with a
+  // blank switch cell; a patched port with no drop yet prints with a
+  // blank drop cell. Panel top-down then by port number.
   if (patchRows.length > 0) {
     let py = tbY - 12;
     page.drawText("PATCHING", {
