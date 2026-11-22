@@ -908,9 +908,25 @@ function drawSchedule(
   // so it reserves nothing here.
   const dropsById = new Map(allDropMarkups(project).map((d) => [d.id, d]));
   const deviceRows = devicesBySwitchRows(rack, rackDevicesById, dropsById);
+  // Devices table columns — same widths as drawn below (wrap only, no
+  // rebalance). A row takes one 11pt line per wrapped line of its
+  // longest cell, so the reserve grows with the wrapped height and the
+  // schedule never runs into the devices table.
+  const devColX = [x + 12, x + w / 3, x + (2 * w) / 3];
+  const devColW = [w / 3 - 20, w / 3 - 12, w / 3 - 12];
+  const deviceLines = deviceRows.reduce(
+    (n, row) =>
+      n +
+      Math.max(
+        wrapText(fonts.regular, row.device, devColW[0], 7).length,
+        wrapText(fonts.regular, row.switch, devColW[1], 7).length,
+        wrapText(fonts.regular, row.ports, devColW[2], 7).length,
+      ),
+    0,
+  );
   const reserve =
     (showTotals ? 100 : 12) +
-    (deviceRows.length > 0 ? 45 + deviceRows.length * 11 : 0);
+    (deviceRows.length > 0 ? 45 + deviceLines * 11 : 0);
 
   let totalW = 0;
   let totalLb = 0;
@@ -998,8 +1014,6 @@ function drawSchedule(
   const contentTop = showTotals ? tbY : cursorY - 6;
   if (deviceRows.length > 0) {
     let py = contentTop - 12;
-    const devColX = [x + 12, x + w / 3, x + (2 * w) / 3];
-    const devColW = [w / 3 - 20, w / 3 - 12, w / 3 - 12];
     page.drawText("DEVICES BY SWITCH", {
       x: x + 8,
       y: py,
@@ -1038,19 +1052,31 @@ function drawSchedule(
     });
     py -= 14;
     for (const row of deviceRows) {
-      py -= 11;
-      if (py < y + 10) {
+      // Each cell wraps onto as many lines as it needs; the row is as
+      // tall as its longest cell. A port list breaks after a comma, a
+      // device name on spaces — a range like 6-11 never splits.
+      const cellLines = [row.device, row.switch, row.ports].map((cell, i) =>
+        wrapText(fonts.regular, cell, devColW[i], 7),
+      );
+      const rowLines = Math.max(...cellLines.map((l) => l.length));
+      py -= 11 * rowLines;
+      // The table always ends 8pt above the panel bottom by
+      // construction (the reserve scales with the wrapped height), so
+      // the guard sits at 6pt — a 10pt guard would drop the last row
+      // on a full table over a 2pt margin technicality.
+      if (py < y + 6) {
         page.drawText("…", { x: x + 8, y: py, size: 8, font: fonts.bold, color: theme.ink400 });
         break;
       }
-      const cells = [row.device, row.switch, row.ports];
-      cells.forEach((cell, i) => {
-        page.drawText(safeText(fitText(fonts.regular, cell, devColW[i], 7)), {
-          x: devColX[i],
-          y: py,
-          size: 7,
-          font: fonts.regular,
-          color: theme.ink,
+      cellLines.forEach((lines, i) => {
+        lines.forEach((line, li) => {
+          page.drawText(safeText(fitText(fonts.regular, line, devColW[i], 7)), {
+            x: devColX[i],
+            y: py + (rowLines - 1 - li) * 11,
+            size: 7,
+            font: fonts.regular,
+            color: theme.ink,
+          });
         });
       });
     }
@@ -1077,6 +1103,37 @@ function drawCols(
     });
     cx += widths[i];
   });
+}
+
+/** Split text into lines that fit a width, breaking only between
+ *  tokens — after a comma for port lists ("1, 3, 5"), on spaces for
+ *  names — so a token like a range ("6-11") never splits. A single
+ *  token wider than the column still comes back whole; the caller
+ *  keeps fitText as the last resort for that case. */
+function wrapText(
+  font: BrandFonts["regular"],
+  text: string,
+  maxWidth: number,
+  size = 7,
+): string[] {
+  if (!text) return [""];
+  if (font.widthOfTextAtSize(text, size) <= maxWidth) return [text];
+  const tokens = text.includes(",")
+    ? text.split(", ").map((t, i, a) => (i < a.length - 1 ? `${t},` : t))
+    : text.split(" ");
+  const lines: string[] = [];
+  let cur = "";
+  for (const tok of tokens) {
+    const next = cur ? `${cur} ${tok}` : tok;
+    if (font.widthOfTextAtSize(next, size) <= maxWidth) {
+      cur = next;
+    } else {
+      if (cur) lines.push(cur);
+      cur = tok;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length > 0 ? lines : [text];
 }
 
 /** Truncate text to fit a pixel width (measured, not a character count). */
