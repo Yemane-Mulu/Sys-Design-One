@@ -352,3 +352,55 @@ export function patchTableRows(
   }
   return rows;
 }
+
+// ───── Patch cords (Cable View) ─────
+
+/** Patch-cord lengths stocked, in feet. */
+export const CORD_LENGTHS = [1, 3, 5] as const;
+/** Cord colors — each color is a VLAN, not a length. */
+export const CORD_COLORS = ["red", "amber", "green", "black", "purple"] as const;
+export type CordColor = (typeof CORD_COLORS)[number];
+
+/** Center U of a placement: the midpoint of the U slots it occupies. */
+export function placementCenterU(p: RackPlacement, dev: RackDeviceType): number {
+  const h = placementUHeight(p, dev);
+  return p.uSlot + (h - 1) / 2;
+}
+
+/** Estimated patch-cord run for a panel -> switch link, in inches: the
+ *  vertical distance between the two device centers (1U = 1.75") plus
+ *  6" for the bend and slack. An estimate, not a measurement. */
+export function patchCordRunInches(
+  from: RackPlacement,
+  fromDev: RackDeviceType,
+  to: RackPlacement,
+  toDev: RackDeviceType,
+): number {
+  const gapU = Math.abs(
+    placementCenterU(from, fromDev) - placementCenterU(to, toDev),
+  );
+  return gapU * 1.75 + 6;
+}
+
+/** Shortest stocked cord that covers a run (inches), or undefined when
+ *  no stocked cord is long enough — the run needs re-routing. */
+export function suggestedCordLength(
+  runInches: number,
+): (typeof CORD_LENGTHS)[number] | undefined {
+  for (const len of CORD_LENGTHS) {
+    if (runInches <= len * 12) return len;
+  }
+  return undefined;
+}
+
+/** Cord status for a link: "ok" when the cord on it covers the run,
+ *  "tight" when the cord is shorter than the run (strain on the cable),
+ *  "unset" when no cord has been recorded for the link yet. */
+export type CordStatus = "ok" | "tight" | "unset";
+export function cordStatus(
+  runInches: number,
+  cordLength: number | undefined,
+): CordStatus {
+  if (cordLength === undefined) return "unset";
+  return cordLength * 12 >= runInches ? "ok" : "tight";
+}

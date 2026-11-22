@@ -16,6 +16,7 @@ import {
   GitBranch,
   Cable,
   ListOrdered,
+  Spline,
 } from "lucide-react";
 import { exportMarkupPdf } from "../export/exportMarkupPdf";
 import { exportBidXlsx, exportBidPdf } from "../export/exportBid";
@@ -29,6 +30,8 @@ import { QualityToggle } from "./QualityToggle";
 import { IngestProgress } from "./IngestProgress";
 import { ForkProjectDialog } from "./ForkProjectDialog";
 import { clearDocCache } from "../lib/pdfjs";
+import { rackDevicesById } from "../data/rackDevices";
+import { cordStatus, patchCordRunInches } from "../rack/rackUtils";
 
 export function Topbar() {
   const project = useProjectStore((s) => s.project);
@@ -50,6 +53,27 @@ export function Topbar() {
   const diagramsCount = project?.diagrams?.length ?? 0;
   const patchCount =
     project?.racks?.reduce((acc, r) => acc + (r.patchLinks?.length ?? 0), 0) ?? 0;
+  // Tight cords across all racks — the red badge on the Cable View tab.
+  const tightCount =
+    project?.racks?.reduce((acc, r) => {
+      const byId = new Map(r.placements.map((p) => [p.id, p]));
+      let n = 0;
+      for (const l of r.patchLinks ?? []) {
+        if (l.cordLength === undefined) continue;
+        const from = byId.get(l.fromPlacementId);
+        const to = byId.get(l.toPlacementId);
+        if (!from || !to) continue;
+        const fromDev = rackDevicesById[from.deviceId];
+        const toDev = rackDevicesById[to.deviceId];
+        if (!fromDev || !toDev) continue;
+        if (
+          cordStatus(patchCordRunInches(from, fromDev, to, toDev), l.cordLength) ===
+          "tight"
+        )
+          n++;
+      }
+      return acc + n;
+    }, 0) ?? 0;
 
   if (!project) return null;
 
@@ -231,6 +255,19 @@ export function Topbar() {
           >
             <ListOrdered className="w-3.5 h-3.5" />
             Drop Sequences
+          </button>
+          <button
+            onClick={() => setView("cable-view")}
+            className={`px-2.5 py-1 rounded text-xs font-medium flex items-center gap-1.5 transition-all ${view === "cable-view" ? "bg-amber-knox/15 text-amber-knox" : "text-ink-300 hover:text-ink-100"}`}
+            title="See the patch cords — which runs are tight"
+          >
+            <Spline className="w-3.5 h-3.5" />
+            Cable View
+            {tightCount > 0 && (
+              <span className="ml-1 px-1 rounded text-[10px] font-mono bg-red-500/20 text-red-300">
+                {tightCount}
+              </span>
+            )}
           </button>
         </div>
       </div>

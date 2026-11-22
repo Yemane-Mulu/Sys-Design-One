@@ -92,7 +92,7 @@ export type { FlowHintStep };
 
 export type QualityMode = "speed" | "balanced" | "quality";
 
-export type ViewMode = "sheets" | "racks" | "diagrams" | "patch-panels" | "drop-sequences";
+export type ViewMode = "sheets" | "racks" | "diagrams" | "patch-panels" | "drop-sequences" | "cable-view";
 
 // ───────── Diagram types ─────────
 //
@@ -185,6 +185,11 @@ export interface RackPatchLink {
   /** drop markup id patched to this port (Patch Panels tab). One drop
    *  per link; assigning a drop already on another link moves it. */
   dropId?: string;
+  /** Patch cord on this link, in feet (1 / 3 / 5). Separate from the
+   *  cord's color, which is the VLAN. Unset until recorded (Cable View). */
+  cordLength?: 1 | 3 | 5;
+  /** Cord color — the VLAN. Unset until recorded (Cable View). */
+  cordColor?: "red" | "amber" | "green" | "black" | "purple";
 }
 
 /** A drop terminated on a patch panel port that is not patched to a
@@ -1525,6 +1530,26 @@ interface State {
    *  the Patch Panels tab lists drops from the whole project. Blank
    *  clears it. */
   setDropDeviceType: (dropId: string, deviceType: string) => void;
+  /** Record the patch cord on a link (Cable View). A field present in
+   *  `cord` is set — `undefined` clears it; a field left out keeps its
+   *  value. Length is feet (1 / 3 / 5); color is the VLAN. */
+  setPatchLinkCord: (
+    rackId: string,
+    linkId: string,
+    cord: {
+      length?: 1 | 3 | 5;
+      color?: "red" | "amber" | "green" | "black" | "purple";
+    },
+  ) => void;
+  /** Move a patch to another switch port (and/or another switch) — the
+   *  drop and the cord ride along. Refused when the target port already
+   *  has a link. */
+  movePatchLink: (
+    rackId: string,
+    linkId: string,
+    toPlacementId: string,
+    toPort: number,
+  ) => void;
 
   setActiveTool: (t: ToolId) => void;
   setActiveDevice: (id: string | null) => void;
@@ -2786,6 +2811,68 @@ export const useProjectStore = create<State>()(
                 ...r,
                 patchLinks: links,
                 panelPortDrops: portDrops,
+                updatedAt: Date.now(),
+              };
+            }),
+            updatedAt: Date.now(),
+          },
+        };
+      }),
+
+    setPatchLinkCord: (rackId, linkId, cord) =>
+      set((s) => {
+        if (!s.project) return s;
+        return {
+          project: {
+            ...s.project,
+            racks: (s.project.racks ?? []).map((r) => {
+              if (r.id !== rackId) return r;
+              return {
+                ...r,
+                patchLinks: (r.patchLinks ?? []).map((l) => {
+                  if (l.id !== linkId) return l;
+                  const next = { ...l };
+                  if ("length" in cord) {
+                    if (cord.length === undefined) delete next.cordLength;
+                    else next.cordLength = cord.length;
+                  }
+                  if ("color" in cord) {
+                    if (cord.color === undefined) delete next.cordColor;
+                    else next.cordColor = cord.color;
+                  }
+                  return next;
+                }),
+                updatedAt: Date.now(),
+              };
+            }),
+            updatedAt: Date.now(),
+          },
+        };
+      }),
+
+    movePatchLink: (rackId, linkId, toPlacementId, toPort) =>
+      set((s) => {
+        if (!s.project) return s;
+        return {
+          project: {
+            ...s.project,
+            racks: (s.project.racks ?? []).map((r) => {
+              if (r.id !== rackId) return r;
+              // Refused when the target port already has a link.
+              const taken = (r.patchLinks ?? []).some(
+                (l) =>
+                  l.id !== linkId &&
+                  l.toPlacementId === toPlacementId &&
+                  l.toPort === toPort,
+              );
+              if (taken) return r;
+              return {
+                ...r,
+                patchLinks: (r.patchLinks ?? []).map((l) =>
+                  l.id === linkId
+                    ? { ...l, toPlacementId, toPort }
+                    : l,
+                ),
                 updatedAt: Date.now(),
               };
             }),

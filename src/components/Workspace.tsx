@@ -14,6 +14,7 @@ import { RackBuilder } from "../rack/RackBuilder";
 import { DiagramBuilder } from "../diagrams/DiagramBuilder";
 import { PatchPanelBuilder } from "../rack/PatchPanelBuilder";
 import { DropSequenceBuilder } from "../rack/DropSequenceBuilder";
+import { CableView } from "../rack/CableView";
 import { SystemSurveyorImportModal } from "./SystemSurveyorImportModal";
 import { useFlowHintClass } from "../hooks/useFlowHints";
 import {
@@ -78,6 +79,8 @@ export function Workspace() {
         <PatchPanelBuilder />
       ) : view === "drop-sequences" ? (
         <DropSequenceBuilder />
+      ) : view === "cable-view" ? (
+        <CableView />
       ) : (
         <div className="flex-1 flex overflow-hidden">
           <LeftRail className="!hidden md:!flex" />
