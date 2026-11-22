@@ -189,7 +189,18 @@ export interface RackPatchLink {
    *  cord's color, which is the VLAN. Unset until recorded (Cable View). */
   cordLength?: 1 | 3 | 5;
   /** Cord color — the VLAN. Unset until recorded (Cable View). */
-  cordColor?: "red" | "amber" | "green" | "black" | "purple";
+  cordColor?:
+    | "red"
+    | "orange"
+    | "yellow"
+    | "green"
+    | "blue"
+    | "indigo"
+    | "violet"
+    | "amber"
+    | "black"
+    | "purple"
+    | "white";
 }
 
 /** A drop terminated on a patch panel port that is not patched to a

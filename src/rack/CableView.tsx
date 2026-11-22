@@ -33,11 +33,17 @@ import { Field } from "./RackProperties";
 
 const CORD_HEX: Record<CordColor, string> = {
   red: "#ef4444",
-  amber: "#f59e0b",
+  orange: "#f97316",
+  yellow: "#eab308",
   green: "#22c55e",
+  blue: "#3b82f6",
+  indigo: "#6366f1",
+  violet: "#8b5cf6",
+  amber: "#f59e0b",
   // Black cords read as grey on the dark background.
   black: "#9ca3af",
   purple: "#a855f7",
+  white: "#ffffff",
 };
 
 interface EnrichedLink {

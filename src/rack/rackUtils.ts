@@ -392,7 +392,21 @@ export function portRowRange(
 /** Patch-cord lengths stocked, in feet. */
 export const CORD_LENGTHS = [1, 3, 5] as const;
 /** Cord colors — each color is a VLAN, not a length. */
-export const CORD_COLORS = ["red", "amber", "green", "black", "purple"] as const;
+/** Cord colors — the seven rainbow colors first, then the extras. Each
+ *  color is a VLAN, not a length. */
+export const CORD_COLORS = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "blue",
+  "indigo",
+  "violet",
+  "amber",
+  "black",
+  "purple",
+  "white",
+] as const;
 export type CordColor = (typeof CORD_COLORS)[number];
 
 /** Center U of a placement: the midpoint of the U slots it occupies. */
