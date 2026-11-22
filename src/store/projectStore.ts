@@ -7,6 +7,7 @@ import {
 } from "../data/devices";
 import { cables as cableCatalog } from "../data/cables";
 import { rackDevices as rackCatalog } from "../data/rackDevices";
+import type { CordColor } from "../rack/rackUtils";
 import { defaultBidDefaults, type BidDefaults } from "../data/defaults";
 import {
   loadStickyBranding,
@@ -189,18 +190,7 @@ export interface RackPatchLink {
    *  cord's color, which is the VLAN. Unset until recorded (Cable View). */
   cordLength?: 1 | 3 | 5;
   /** Cord color — the VLAN. Unset until recorded (Cable View). */
-  cordColor?:
-    | "red"
-    | "orange"
-    | "yellow"
-    | "green"
-    | "blue"
-    | "indigo"
-    | "violet"
-    | "amber"
-    | "black"
-    | "purple"
-    | "white";
+  cordColor?: CordColor;
 }
 
 /** A drop terminated on a patch panel port that is not patched to a
@@ -1549,19 +1539,22 @@ interface State {
     linkId: string,
     cord: {
       length?: 1 | 3 | 5;
-      color?:
-        | "red"
-        | "orange"
-        | "yellow"
-        | "green"
-        | "blue"
-        | "indigo"
-        | "violet"
-        | "amber"
-        | "black"
-        | "purple"
-        | "white";
+      color?: CordColor;
     },
+  ) => void;
+  /** Record the patch cord on many links at once (Cable View bulk
+   *  apply). One save for the whole batch. Same per-field semantics
+   *  as setPatchLinkCord: a field present in `cord` is set —
+   *  `undefined` clears it; a field left out keeps its value. */
+  setPatchLinkCords: (
+    rackId: string,
+    updates: Array<{
+      linkId: string;
+      cord: {
+        length?: 1 | 3 | 5;
+        color?: CordColor;
+      };
+    }>,
   ) => void;
   /** Move a patch to another switch port (and/or another switch) — the
    *  drop and the cord ride along. Refused when the target port already
@@ -2853,6 +2846,39 @@ export const useProjectStore = create<State>()(
                 ...r,
                 patchLinks: (r.patchLinks ?? []).map((l) => {
                   if (l.id !== linkId) return l;
+                  const next = { ...l };
+                  if ("length" in cord) {
+                    if (cord.length === undefined) delete next.cordLength;
+                    else next.cordLength = cord.length;
+                  }
+                  if ("color" in cord) {
+                    if (cord.color === undefined) delete next.cordColor;
+                    else next.cordColor = cord.color;
+                  }
+                  return next;
+                }),
+                updatedAt: Date.now(),
+              };
+            }),
+            updatedAt: Date.now(),
+          },
+        };
+      }),
+
+    setPatchLinkCords: (rackId, updates) =>
+      set((s) => {
+        if (!s.project) return s;
+        const byId = new Map(updates.map((u) => [u.linkId, u.cord]));
+        return {
+          project: {
+            ...s.project,
+            racks: (s.project.racks ?? []).map((r) => {
+              if (r.id !== rackId) return r;
+              return {
+                ...r,
+                patchLinks: (r.patchLinks ?? []).map((l) => {
+                  const cord = byId.get(l.id);
+                  if (!cord) return l;
                   const next = { ...l };
                   if ("length" in cord) {
                     if (cord.length === undefined) delete next.cordLength;

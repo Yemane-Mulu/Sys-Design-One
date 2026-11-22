@@ -50,7 +50,7 @@ interface EnrichedLink {
   link: RackPatchLink;
   drop: DropMarkup | undefined;
   run: number;
-  suggested: number | undefined;
+  suggested: 1 | 3 | 5 | undefined;
   status: "ok" | "tight" | "unset";
 }
 
@@ -229,13 +229,26 @@ export function CableView() {
   const assignDrop = useProjectStore((s) => s.assignPanelPortDrop);
   const movePatch = useProjectStore((s) => s.movePatchLink);
   const setCord = useProjectStore((s) => s.setPatchLinkCord);
+  const setBulkCords = useProjectStore((s) => s.setPatchLinkCords);
 
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  // Bulk apply: link ids picked with the table checkboxes, plus the
+  // length/color the bulk bar will apply to all of them at once.
+  const [bulkIds, setBulkIds] = useState<string[]>([]);
+  const [bulkLength, setBulkLength] = useState<
+    "" | "1" | "3" | "5" | "suggested"
+  >("");
+  const [bulkColor, setBulkColor] = useState<"" | CordColor>("");
+  const [bulkNote, setBulkNote] = useState<string | null>(null);
 
   const rack = racks.find((r) => r.id === activeRackId) ?? racks[0];
 
   useEffect(() => {
     setSelectedLinkId(null);
+    setBulkIds([]);
+    setBulkLength("");
+    setBulkColor("");
+    setBulkNote(null);
   }, [rack?.id]);
 
   const drops = useMemo(
@@ -295,6 +308,72 @@ export function CableView() {
     return null;
   }, [pairs, selectedLinkId]);
 
+  const toggleBulk = (id: string) => {
+    setBulkNote(null);
+    setBulkIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const togglePairBulk = (pair: Pair) => {
+    setBulkNote(null);
+    const ids = pair.links.map((e) => e.link.id);
+    setBulkIds((prev) => {
+      const all = ids.every((id) => prev.includes(id));
+      return all
+        ? prev.filter((id) => !ids.includes(id))
+        : [...prev, ...ids.filter((id) => !prev.includes(id))];
+    });
+  };
+
+  const clearBulk = () => {
+    setBulkIds([]);
+    setBulkLength("");
+    setBulkColor("");
+    setBulkNote(null);
+  };
+
+  /** Apply the bar's length and/or color to every picked row, in one
+   *  save. A field left on "—" is untouched. "Suggested lengths"
+   *  gives each row its own suggested length; rows with no suggested
+   *  length are skipped and counted. */
+  const applyBulk = () => {
+    if (bulkIds.length === 0) return;
+    if (bulkLength === "" && bulkColor === "") return;
+    const updates: Array<{
+      linkId: string;
+      cord: { length?: 1 | 3 | 5; color?: CordColor };
+    }> = [];
+    let skipped = 0;
+    for (const id of bulkIds) {
+      let found: EnrichedLink | undefined;
+      for (const p of pairs) {
+        found = p.links.find((e) => e.link.id === id);
+        if (found) break;
+      }
+      if (!found) continue;
+      const cord: { length?: 1 | 3 | 5; color?: CordColor } = {};
+      if (bulkLength === "suggested") {
+        if (found.suggested !== undefined) cord.length = found.suggested;
+        else skipped++;
+      } else if (bulkLength !== "") {
+        cord.length = Number(bulkLength) as 1 | 3 | 5;
+      }
+      if (bulkColor !== "") cord.color = bulkColor;
+      if ("length" in cord || "color" in cord) updates.push({ linkId: id, cord });
+    }
+    if (updates.length > 0 && rack) setBulkCords(rack.id, updates);
+    const applied = updates.length;
+    setBulkIds([]);
+    setBulkLength("");
+    setBulkColor("");
+    setBulkNote(
+      skipped > 0
+        ? `Applied to ${applied} row${applied === 1 ? "" : "s"}; ${skipped} row${skipped === 1 ? "" : "s"} had no suggested length — left unset.`
+        : `Applied to ${applied} row${applied === 1 ? "" : "s"}.`,
+    );
+  };
+
   if (racks.length === 0 || !rack) {
     return (
       <div className="flex-1 overflow-auto p-4">
@@ -343,6 +422,20 @@ export function CableView() {
         </Field>
       </div>
 
+      {bulkIds.length > 0 && (
+        <BulkBar
+          count={bulkIds.length}
+          length={bulkLength}
+          onLength={setBulkLength}
+          color={bulkColor}
+          onColor={setBulkColor}
+          onApply={applyBulk}
+          onClear={clearBulk}
+        />
+      )}
+
+      {bulkNote && <p className="text-xs text-ink-300">{bulkNote}</p>}
+
       {pairs.length === 0 ? (
         <div className="panel rounded-lg p-6 text-sm text-ink-300 text-center">
           No patches yet — patch a panel to a switch on the Patch Panels tab
@@ -357,6 +450,9 @@ export function CableView() {
             selectedLinkId={selectedLinkId}
             onSelect={setSelectedLinkId}
             onSetCord={setCord}
+            bulkIds={bulkIds}
+            onToggleBulk={toggleBulk}
+            onTogglePairBulk={() => togglePairBulk(pair)}
           />
         ))
       )}
@@ -375,12 +471,84 @@ export function CableView() {
   );
 }
 
+/** Bulk-apply bar: shows while any table rows are picked. One length
+ *  and/or one color, applied to every picked row in a single save. A
+ *  field left on "—" is untouched. */
+function BulkBar({
+  count,
+  length,
+  onLength,
+  color,
+  onColor,
+  onApply,
+  onClear,
+}: {
+  count: number;
+  length: "" | "1" | "3" | "5" | "suggested";
+  onLength: (v: "" | "1" | "3" | "5" | "suggested") => void;
+  color: "" | CordColor;
+  onColor: (v: "" | CordColor) => void;
+  onApply: () => void;
+  onClear: () => void;
+}) {
+  const canApply = length !== "" || color !== "";
+  return (
+    <div className="panel rounded-lg p-3 sticky top-0 z-10 flex items-center gap-3 flex-wrap">
+      <span className="text-xs font-semibold text-ink-100">
+        {count} selected
+      </span>
+      <label className="flex items-center gap-1.5 text-xs text-ink-300">
+        Length
+        <select
+          className="input !py-0.5 !px-1 text-xs w-[140px]"
+          value={length}
+          onChange={(e) =>
+            onLength(e.target.value as "" | "1" | "3" | "5" | "suggested")
+          }
+          aria-label="Bulk cord length"
+        >
+          <option value="">— leave unchanged</option>
+          <option value="1">1 ft</option>
+          <option value="3">3 ft</option>
+          <option value="5">5 ft</option>
+          <option value="suggested">Suggested lengths</option>
+        </select>
+      </label>
+      <label className="flex items-center gap-1.5 text-xs text-ink-300">
+        Color
+        <select
+          className="input !py-0.5 !px-1 text-xs w-[120px]"
+          value={color}
+          onChange={(e) => onColor(e.target.value as "" | CordColor)}
+          aria-label="Bulk cord color (VLAN)"
+        >
+          <option value="">— leave unchanged</option>
+          {CORD_COLORS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button className="btn btn-sm" disabled={!canApply} onClick={onApply}>
+        Apply to {count}
+      </button>
+      <button className="btn btn-sm" onClick={onClear}>
+        Clear
+      </button>
+    </div>
+  );
+}
+
 function PairSection({
   rack,
   pair,
   selectedLinkId,
   onSelect,
   onSetCord,
+  bulkIds,
+  onToggleBulk,
+  onTogglePairBulk,
 }: {
   rack: Rack;
   pair: Pair;
@@ -391,8 +559,14 @@ function PairSection({
     linkId: string,
     cord: { length?: 1 | 3 | 5; color?: CordColor },
   ) => void;
+  bulkIds: string[];
+  onToggleBulk: (id: string) => void;
+  onTogglePairBulk: () => void;
 }) {
   const { panel, panelDev, sw, swDev, links } = pair;
+  const allBulk =
+    links.length > 0 && links.every((e) => bulkIds.includes(e.link.id));
+  const someBulk = links.some((e) => bulkIds.includes(e.link.id));
   const gapU = Math.abs(
     (panel.uSlot + (placementUHeight(panel, panelDev) - 1) / 2) -
       (sw.uSlot + (placementUHeight(sw, swDev) - 1) / 2),
@@ -404,7 +578,16 @@ function PairSection({
   return (
     <div className="panel rounded-lg p-3 space-y-3">
       <div className="flex items-baseline justify-between flex-wrap gap-1">
-        <div className="label">
+        <div className="label flex items-center gap-2">
+          <input
+            type="checkbox"
+            ref={(el) => {
+              if (el) el.indeterminate = someBulk && !allBulk;
+            }}
+            checked={allBulk}
+            onChange={onTogglePairBulk}
+            aria-label={`Select all ${links.length} cables in this pair`}
+          />
           {placementPatchName(panel, panelDev)} →{" "}
           {placementPatchName(sw, swDev)}
           <span className="ml-2 font-normal text-ink-300">
@@ -512,6 +695,7 @@ function PairSection({
         <table className="w-full text-xs">
           <thead>
             <tr className="text-left text-ink-300 border-b border-white/10">
+              <th className="py-1 pr-2 font-medium w-6" aria-label="Select row" />
               <th className="py-1 pr-2 font-medium">Drop</th>
               <th className="py-1 pr-2 font-medium">Device</th>
               <th className="py-1 pr-2 font-medium">Panel port</th>
@@ -528,11 +712,19 @@ function PairSection({
                 key={link.id}
                 className={`border-b border-white/5 cursor-pointer ${
                   link.id === selectedLinkId ? "bg-white/5" : ""
-                }`}
+                } ${bulkIds.includes(link.id) ? "bg-amber-400/10" : ""}`}
                 onClick={() =>
                   onSelect(link.id === selectedLinkId ? null : link.id)
                 }
               >
+                <td className="py-1 pr-2" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={bulkIds.includes(link.id)}
+                    onChange={() => onToggleBulk(link.id)}
+                    aria-label={`Select ${drop ? dropDisplayNumber(drop) : `port ${link.fromPort}`} for bulk apply`}
+                  />
+                </td>
                 <td className="py-1 pr-2 font-mono text-ink-100">
                   {drop ? dropDisplayNumber(drop) : <span className="italic text-ink-300">—</span>}
                 </td>
