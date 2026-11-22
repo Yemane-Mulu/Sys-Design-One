@@ -1549,7 +1549,18 @@ interface State {
     linkId: string,
     cord: {
       length?: 1 | 3 | 5;
-      color?: "red" | "amber" | "green" | "black" | "purple";
+      color?:
+        | "red"
+        | "orange"
+        | "yellow"
+        | "green"
+        | "blue"
+        | "indigo"
+        | "violet"
+        | "amber"
+        | "black"
+        | "purple"
+        | "white";
     },
   ) => void;
   /** Move a patch to another switch port (and/or another switch) — the
