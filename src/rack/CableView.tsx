@@ -109,10 +109,22 @@ function DeviceBar({
   p,
   dev,
   y,
+  hoveredPort,
+  onPortHover,
+  onPortLeave,
 }: {
   p: RackPlacement;
   dev: RackDeviceType;
   y: number;
+  /** The port square the mouse is over, if any — drawn with an amber
+   *  outline. `n` is the port number (SFP slots are rjN+1..). */
+  hoveredPort?: { n: number; isSfp: boolean } | null;
+  onPortHover?: (
+    n: number,
+    isSfp: boolean,
+    ev: { clientX: number; clientY: number },
+  ) => void;
+  onPortLeave?: () => void;
 }) {
   const rj = dev.faceplate?.ports?.[0];
   const rjN = rj?.count ?? dev.frontPorts ?? 0;
@@ -125,11 +137,17 @@ function DeviceBar({
   const bottomRange = rj
     ? portRowRange(rj, 1)
     : { first: perRow + 1, last: rjN };
-  const ports: { x: number; y: number; key: string }[] = [];
+  const ports: { x: number; y: number; key: string; n: number }[] = [];
   for (let i = 0; i < rjN; i++) {
     const col = i % perRow;
     const row = Math.floor(i / perRow);
-    ports.push({ x: 180 + col * 24, y: y + 6 + row * 18, key: `p${i + 1}` });
+    // Port number follows the group's order: row-major on panels,
+    // odd on top / even on bottom on the JetStreams.
+    const n =
+      rj?.order === "column"
+        ? col * rows + row + 1
+        : row * perRow + col + 1;
+    ports.push({ x: 180 + col * 24, y: y + 6 + row * 18, key: `p${n}`, n });
   }
   return (
     <g>
@@ -148,22 +166,33 @@ function DeviceBar({
       <text x={32} y={y + 36} fill="#8b9bb0" fontSize={10}>
         {uRange(p, dev)}
       </text>
-      {ports.map((pt) => (
-        <rect
-          key={pt.key}
-          x={pt.x}
-          y={pt.y}
-          width={12}
-          height={12}
-          fill="#0b1220"
-          stroke="#5b6b80"
-        />
-      ))}
+      {ports.map((pt) => {
+        const isHot = hoveredPort?.n === pt.n && !hoveredPort.isSfp;
+        return (
+          <rect
+            key={pt.key}
+            x={pt.x}
+            y={pt.y}
+            width={12}
+            height={12}
+            fill="#0b1220"
+            stroke={isHot ? "#f59e0b" : "#5b6b80"}
+            strokeWidth={isHot ? 2 : 1}
+            style={{ cursor: "pointer" }}
+            onMouseEnter={(ev) => onPortHover?.(pt.n, false, ev)}
+            onMouseMove={(ev) => onPortHover?.(pt.n, false, ev)}
+            onMouseLeave={onPortLeave}
+          />
+        );
+      })}
       {sfp && (
         <g>
           {Array.from({ length: sfp.count }, (_, s) => {
             const { col, row } = portGridPosition(sfp, s);
             const sy = (sfp.rows ?? 1) > 1 ? y + 6 + row * 18 : y + 15;
+            // SFP slots are numbered past the RJ45 block.
+            const n = rjN + s + 1;
+            const isHot = hoveredPort?.n === n && hoveredPort.isSfp;
             return (
               <rect
                 key={s}
@@ -172,7 +201,12 @@ function DeviceBar({
                 width={14}
                 height={14}
                 fill="#0b1220"
-                stroke="#f59e0b"
+                stroke={isHot ? "#fbbf24" : "#f59e0b"}
+                strokeWidth={isHot ? 2 : 1}
+                style={{ cursor: "pointer" }}
+                onMouseEnter={(ev) => onPortHover?.(n, true, ev)}
+                onMouseMove={(ev) => onPortHover?.(n, true, ev)}
+                onMouseLeave={onPortLeave}
               />
             );
           })}
@@ -567,6 +601,37 @@ function PairSection({
   const allBulk =
     links.length > 0 && links.every((e) => bulkIds.includes(e.link.id));
   const someBulk = links.some((e) => bulkIds.includes(e.link.id));
+  // Port hover: the port square the mouse is over, with the cursor
+  // position for the tooltip. The tooltip names the drop on that port,
+  // and the port's cable lights up while the rest dim.
+  const [portHover, setPortHover] = useState<{
+    side: "panel" | "switch";
+    n: number;
+    isSfp: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const onPortHover = (
+    side: "panel" | "switch",
+    n: number,
+    isSfp: boolean,
+    ev: { clientX: number; clientY: number },
+  ) => {
+    setPortHover({ side, n, isSfp, x: ev.clientX, y: ev.clientY });
+  };
+
+  const onPortLeave = () => setPortHover(null);
+
+  const panelName = placementPatchName(panel, panelDev);
+  const swName = placementPatchName(sw, swDev);
+  const hoveredLink =
+    portHover && !portHover.isSfp
+      ? portHover.side === "panel"
+        ? links.find((e) => e.link.fromPort === portHover.n)
+        : links.find((e) => e.link.toPort === portHover.n)
+      : undefined;
+  const hoveredLinkId = hoveredLink?.link.id;
   const gapU = Math.abs(
     (panel.uSlot + (placementUHeight(panel, panelDev) - 1) / 2) -
       (sw.uSlot + (placementUHeight(sw, swDev) - 1) / 2),
@@ -611,8 +676,30 @@ function PairSection({
         role="img"
         aria-label={`${placementPatchName(panel, panelDev)} to ${placementPatchName(sw, swDev)} cables`}
       >
-        <DeviceBar p={panel} dev={panelDev} y={panelY} />
-        <DeviceBar p={sw} dev={swDev} y={switchY} />
+        <DeviceBar
+          p={panel}
+          dev={panelDev}
+          y={panelY}
+          hoveredPort={
+            portHover?.side === "panel"
+              ? { n: portHover.n, isSfp: portHover.isSfp }
+              : null
+          }
+          onPortHover={(n, isSfp, ev) => onPortHover("panel", n, isSfp, ev)}
+          onPortLeave={onPortLeave}
+        />
+        <DeviceBar
+          p={sw}
+          dev={swDev}
+          y={switchY}
+          hoveredPort={
+            portHover?.side === "switch"
+              ? { n: portHover.n, isSfp: portHover.isSfp }
+              : null
+          }
+          onPortHover={(n, isSfp, ev) => onPortHover("switch", n, isSfp, ev)}
+          onPortLeave={onPortLeave}
+        />
         {links.map(({ link, drop, status }) => {
           const a = portPoint(panelDev, panelY, link.fromPort);
           const b = portPoint(swDev, switchY, link.toPort);
@@ -631,6 +718,7 @@ function PairSection({
               key={link.id}
               onClick={() => onSelect(selected ? null : link.id)}
               style={{ cursor: "pointer" }}
+              opacity={hoveredLinkId && link.id !== hoveredLinkId ? 0.15 : 1}
             >
               <title>
                 {label || "No drop"} · {placementPatchName(panel, panelDev)}{" "}
@@ -654,7 +742,7 @@ function PairSection({
                 fill="none"
                 stroke={isBlackCord ? "#e5e7eb" : color}
                 strokeDasharray={isBlackCord ? "0.1 7" : undefined}
-                strokeWidth={selected ? 4 : 2.5}
+                strokeWidth={selected || link.id === hoveredLinkId ? 4 : 2.5}
                 strokeLinecap="round"
               />
               {selected && (
@@ -762,6 +850,82 @@ function PairSection({
           </tbody>
         </table>
       </div>
+
+      {portHover && (
+        <div
+          className="fixed z-20 pointer-events-none rounded-md border border-amber-400 bg-slate-950 px-2.5 py-2 text-xs leading-relaxed shadow-lg"
+          style={{
+            left: Math.min(portHover.x + 14, window.innerWidth - 280),
+            top: Math.min(portHover.y + 14, window.innerHeight - 150),
+          }}
+        >
+          <div className="text-[13px] font-bold text-ink-100">
+            {portHover.side === "panel" ? panelName : swName} ·{" "}
+            {portHover.isSfp ? `SFP ${portHover.n}` : `Port ${portHover.n}`}
+          </div>
+          {portHover.isSfp ? (
+            <div className="italic text-ink-300">SFP slot — no drop</div>
+          ) : hoveredLink ? (
+            <>
+              <div className="text-ink-100">
+                Drop:{" "}
+                <b className="font-semibold">
+                  {hoveredLink.drop
+                    ? dropDisplayNumber(hoveredLink.drop)
+                    : "—"}
+                </b>
+              </div>
+              <div className="text-ink-100">
+                Device:{" "}
+                <b className="font-semibold">
+                  {hoveredLink.drop?.deviceType?.trim()
+                    ? hoveredLink.drop.deviceType
+                    : "—"}
+                </b>
+              </div>
+              <div className="text-ink-100">
+                {portHover.side === "panel" ? (
+                  <>
+                    Patches to:{" "}
+                    <b className="font-semibold">
+                      {swName} / P {hoveredLink.link.toPort}
+                    </b>
+                  </>
+                ) : (
+                  <>
+                    From:{" "}
+                    <b className="font-semibold">
+                      {panelName} · Port {hoveredLink.link.fromPort}
+                    </b>
+                  </>
+                )}
+              </div>
+              <div className="text-ink-100">
+                Cord:{" "}
+                <b className="font-semibold">
+                  {hoveredLink.link.cordLength
+                    ? `${hoveredLink.link.cordLength} ft`
+                    : "not set"}
+                  {hoveredLink.link.cordColor
+                    ? ` · ${hoveredLink.link.cordColor}`
+                    : ""}
+                </b>
+                {hoveredLink.status === "ok" ? (
+                  <span className="text-green-400"> — OK</span>
+                ) : hoveredLink.status === "tight" ? (
+                  <span className="font-semibold text-red-300"> — TIGHT</span>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <div className="italic text-ink-300">
+              {portHover.side === "panel"
+                ? "No drop — not patched"
+                : "No patch — free"}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
