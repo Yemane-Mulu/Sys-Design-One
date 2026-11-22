@@ -317,6 +317,42 @@ export function CableView() {
   >("");
   const [bulkColor, setBulkColor] = useState<"" | CordColor>("");
   const [bulkNote, setBulkNote] = useState<string | null>(null);
+  // The cord new cables get: ONE shared pick for the whole Cable View,
+  // not one per pair. Pick a color once and every new cable after that
+  // gets it, in any pair, until it is changed. Suggested gives each
+  // cable its own length from its pair's run; green is the default
+  // color, "—" records no color. Deliberately NOT reset when the rack
+  // changes — the last pick wins until a new one is made.
+  const [newCordLength, setNewCordLength] = useState<
+    "suggested" | "1" | "3" | "5"
+  >("suggested");
+  const [newCordColor, setNewCordColor] = useState<"" | CordColor>("green");
+  /** A color/length picked on a cable becomes the pick for the next new
+   *  cable too: the toolbar follows the last pick, wherever it was
+   *  made. A cleared length goes back to Suggested; a cleared color
+   *  records no color. */
+  const rememberCord = (cord: { length?: 1 | 3 | 5; color?: CordColor }) => {
+    if ("color" in cord) setNewCordColor(cord.color ?? "");
+    if ("length" in cord)
+      setNewCordLength(
+        cord.length === undefined
+          ? "suggested"
+          : (String(cord.length) as "1" | "3" | "5"),
+      );
+  };
+  /** Save a cord on one cable AND make it the pick for the next new
+   *  cable. The toolbar's own application of the pick to fresh cables
+   *  does NOT go through here — it must not feed its own output back
+   *  into the default (a Suggested length would collapse to a fixed
+   *  number on the first cable). */
+  const setCordAndRemember = (
+    rackId: string,
+    linkId: string,
+    cord: { length?: 1 | 3 | 5; color?: CordColor },
+  ) => {
+    setCord(rackId, linkId, cord);
+    rememberCord(cord);
+  };
   // Pairs started from the picker that have no cables yet — they render
   // as empty sections so the first cable can be plugged in.
   const [extraPairs, setExtraPairs] = useState<
@@ -676,6 +712,11 @@ export function CableView() {
             onAddPatchLinks={addPatchLinks}
             onSetCord={setCord}
             onSetCords={setBulkCords}
+            newLength={newCordLength}
+            newColor={newCordColor}
+            onNewLengthChange={setNewCordLength}
+            onNewColorChange={setNewCordColor}
+            onSetCordRemember={setCordAndRemember}
             bulkIds={bulkIds}
             onToggleBulk={toggleBulk}
             onTogglePairBulk={() => togglePairBulk(pair)}
@@ -690,7 +731,7 @@ export function CableView() {
           enriched={selected.enriched}
           onAssignDrop={assignDrop}
           onMovePatch={movePatch}
-          onSetCord={setCord}
+          onSetCord={setCordAndRemember}
           onRemovePatch={handleRemovePatch}
         />
       )}
@@ -776,6 +817,11 @@ function PairSection({
   onAddPatchLinks,
   onSetCord,
   onSetCords,
+  newLength,
+  newColor,
+  onNewLengthChange,
+  onNewColorChange,
+  onSetCordRemember,
   bulkIds,
   onToggleBulk,
   onTogglePairBulk,
@@ -798,6 +844,18 @@ function PairSection({
       cord: { length?: 1 | 3 | 5; color?: CordColor };
     }>,
   ) => void;
+  // The shared pick for new cables (one for the whole Cable View, held
+  // by the parent): the toolbar shows it, and a color/length picked on
+  // a cable in the table updates it for the next new cable.
+  newLength: "suggested" | "1" | "3" | "5";
+  newColor: "" | CordColor;
+  onNewLengthChange: (v: "suggested" | "1" | "3" | "5") => void;
+  onNewColorChange: (v: "" | CordColor) => void;
+  onSetCordRemember: (
+    rackId: string,
+    linkId: string,
+    cord: { length?: 1 | 3 | 5; color?: CordColor },
+  ) => void;
   bulkIds: string[];
   onToggleBulk: (id: string) => void;
   onTogglePairBulk: () => void;
@@ -809,13 +867,6 @@ function PairSection({
   // Click-to-patch: the port picked on the top device, waiting for its
   // partner on the bottom device.
   const [pickedPort, setPickedPort] = useState<number | null>(null);
-  // The cord every new cable from this pair gets: Suggested gives each
-  // cable its own length from the pair's run; green is the default
-  // color, "—" records no color.
-  const [newLength, setNewLength] = useState<
-    "suggested" | "1" | "3" | "5"
-  >("suggested");
-  const [newColor, setNewColor] = useState<"" | CordColor>("green");
   const [showRange, setShowRange] = useState(false);
   const [rangeFrom, setRangeFrom] = useState("1");
   const [rangeTo, setRangeTo] = useState("12");
@@ -1058,7 +1109,7 @@ function PairSection({
             className="input !py-0.5 !px-1 text-xs w-[110px]"
             value={newLength}
             onChange={(e) =>
-              setNewLength(
+              onNewLengthChange(
                 e.target.value as "suggested" | "1" | "3" | "5",
               )
             }
@@ -1072,7 +1123,7 @@ function PairSection({
           <select
             className="input !py-0.5 !px-1 text-xs w-[100px]"
             value={newColor}
-            onChange={(e) => setNewColor(e.target.value as "" | CordColor)}
+            onChange={(e) => onNewColorChange(e.target.value as "" | CordColor)}
             aria-label="New cord color (VLAN)"
           >
             <option value="">— color</option>
@@ -1292,7 +1343,9 @@ function PairSection({
                 <td className="py-1 pr-2" onClick={(e) => e.stopPropagation()}>
                   <CordPickers
                     link={link}
-                    onSetCord={(cord) => onSetCord(rack.id, link.id, cord)}
+                    onSetCord={(cord) =>
+                      onSetCordRemember(rack.id, link.id, cord)
+                    }
                   />
                 </td>
                 <td className="py-1 pr-2 text-ink-100">
