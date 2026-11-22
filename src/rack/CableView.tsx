@@ -1,8 +1,12 @@
-// Cable View — one picture per panel -> switch pair, one cable per patch.
-// The panel and the switch are drawn where they sit in the rack, so a
-// long run is visible before the cord goes on: the run is the distance
-// between the two device centers (1U = 1.75") plus 6" for the bend and
-// slack. A cable is TIGHT when the cord on it is shorter than the run
+// Cable View — one picture per pair of patchable devices, one cable
+// per patch. Patching happens here now: click a port on the top
+// device, then a port on the bottom one, and the cable appears between
+// them. A pair is any two patch panels or switches — two switches make
+// an uplink, which prints on the elevation like any other patch. The
+// devices are drawn where they sit in the rack, so a long run is
+// visible before the cord goes on: the run is the distance between
+// the two device centers (1U = 1.75") plus 6" for the bend and slack.
+// A cable is TIGHT when the cord on it is shorter than the run
 // (strain on the cable). Cord color is the VLAN; length is a separate
 // pick. Click a cable to move its drop, its switch port, or its cord.
 import { useEffect, useMemo, useState } from "react";
@@ -55,12 +59,22 @@ interface EnrichedLink {
 }
 
 interface Pair {
-  panel: RackPlacement;
-  panelDev: RackDeviceType;
-  sw: RackPlacement;
-  swDev: RackDeviceType;
+  /** Top device of the section — a patch panel or a switch. */
+  from: RackPlacement;
+  fromDev: RackDeviceType;
+  /** Bottom device — a patch panel or a switch. Two switches make an
+   *  uplink pair. */
+  to: RackPlacement;
+  toDev: RackDeviceType;
   links: EnrichedLink[];
   tight: number;
+  /** Patch-cord run for this pair, in inches — same for every link in
+   *  it, since it only depends on the two devices. */
+  run: number;
+}
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
 }
 
 /** RJ45 port count on a device: its first faceplate port group, else
@@ -112,6 +126,10 @@ function DeviceBar({
   hoveredPort,
   onPortHover,
   onPortLeave,
+  patchedPorts,
+  selectedPort,
+  destPort,
+  onPortClick,
 }: {
   p: RackPlacement;
   dev: RackDeviceType;
@@ -125,6 +143,16 @@ function DeviceBar({
     ev: { clientX: number; clientY: number },
   ) => void;
   onPortLeave?: () => void;
+  /** RJ45 ports that already have a cable on this bar — amber fill. */
+  patchedPorts?: Set<number>;
+  /** The port picked for patching on this bar — blue outline. */
+  selectedPort?: number | null;
+  /** The port this bar's picked port already patches to — green
+   *  outline. Only set on the bottom bar. */
+  destPort?: number | null;
+  /** Click a port square to patch. SFP slots are hover-only — they
+   *  never take a drop patch. */
+  onPortClick?: (n: number) => void;
 }) {
   const rj = dev.faceplate?.ports?.[0];
   const rjN = rj?.count ?? dev.frontPorts ?? 0;
@@ -168,6 +196,9 @@ function DeviceBar({
       </text>
       {ports.map((pt) => {
         const isHot = hoveredPort?.n === pt.n && !hoveredPort.isSfp;
+        const isPatched = patchedPorts?.has(pt.n) ?? false;
+        const isSelected = selectedPort === pt.n;
+        const isDest = destPort === pt.n;
         return (
           <rect
             key={pt.key}
@@ -175,10 +206,19 @@ function DeviceBar({
             y={pt.y}
             width={12}
             height={12}
-            fill="#0b1220"
-            stroke={isHot ? "#f59e0b" : "#5b6b80"}
-            strokeWidth={isHot ? 2 : 1}
+            fill={isPatched ? "#f59e0b" : "#0b1220"}
+            stroke={
+              isSelected
+                ? "#4fb7ff"
+                : isDest
+                  ? "#2bd37c"
+                  : isHot
+                    ? "#f59e0b"
+                    : "#5b6b80"
+            }
+            strokeWidth={isSelected || isDest || isHot ? 2 : 1}
             style={{ cursor: "pointer" }}
+            onClick={() => onPortClick?.(pt.n)}
             onMouseEnter={(ev) => onPortHover?.(pt.n, false, ev)}
             onMouseMove={(ev) => onPortHover?.(pt.n, false, ev)}
             onMouseLeave={onPortLeave}
@@ -262,6 +302,9 @@ export function CableView() {
   const setActiveRack = useProjectStore((s) => s.setActiveRack);
   const assignDrop = useProjectStore((s) => s.assignPanelPortDrop);
   const movePatch = useProjectStore((s) => s.movePatchLink);
+  const addPatchLink = useProjectStore((s) => s.addPatchLink);
+  const addPatchLinks = useProjectStore((s) => s.addPatchLinks);
+  const removePatchLink = useProjectStore((s) => s.removePatchLink);
   const setCord = useProjectStore((s) => s.setPatchLinkCord);
   const setBulkCords = useProjectStore((s) => s.setPatchLinkCords);
 
@@ -274,6 +317,14 @@ export function CableView() {
   >("");
   const [bulkColor, setBulkColor] = useState<"" | CordColor>("");
   const [bulkNote, setBulkNote] = useState<string | null>(null);
+  // Pairs started from the picker that have no cables yet — they render
+  // as empty sections so the first cable can be plugged in.
+  const [extraPairs, setExtraPairs] = useState<
+    Array<{ fromId: string; toId: string }>
+  >([]);
+  const [pairFromId, setPairFromId] = useState("");
+  const [pairToId, setPairToId] = useState("");
+  const [pairMsg, setPairMsg] = useState<string | null>(null);
 
   const rack = racks.find((r) => r.id === activeRackId) ?? racks[0];
 
@@ -283,6 +334,10 @@ export function CableView() {
     setBulkLength("");
     setBulkColor("");
     setBulkNote(null);
+    setExtraPairs([]);
+    setPairFromId("");
+    setPairToId("");
+    setPairMsg(null);
   }, [rack?.id]);
 
   const drops = useMemo(
@@ -294,42 +349,125 @@ export function CableView() {
     [drops],
   );
 
+  // Patchable devices on this rack: patch panels and switches. Two
+  // switches make an uplink pair.
+  const patchable = useMemo(
+    () =>
+      rack
+        ? rack.placements.filter((p) => {
+            const d = rackDevicesById[p.deviceId];
+            return (
+              d &&
+              (d.category === "patch" || d.category === "switch") &&
+              (d.frontPorts ?? 0) > 0
+            );
+          })
+        : [],
+    [rack],
+  );
+
   const pairs = useMemo<Pair[]>(() => {
     if (!rack) return [];
     const byId = new Map(rack.placements.map((p) => [p.id, p]));
     const groups = new Map<string, Pair>();
-    for (const link of rack.patchLinks ?? []) {
-      const panel = byId.get(link.fromPlacementId);
-      const sw = byId.get(link.toPlacementId);
-      if (!panel || !sw) continue;
-      const panelDev = rackDevicesById[panel.deviceId];
-      const swDev = rackDevicesById[sw.deviceId];
-      if (!panelDev || !swDev) continue;
-      if (panelDev.category !== "patch" || swDev.category !== "switch")
-        continue;
-      const key = `${link.fromPlacementId}->${link.toPlacementId}`;
+    const ensurePair = (
+      from: RackPlacement,
+      to: RackPlacement,
+    ): Pair | undefined => {
+      const fromDev = rackDevicesById[from.deviceId];
+      const toDev = rackDevicesById[to.deviceId];
+      if (!fromDev || !toDev) return undefined;
+      if (fromDev.category !== "patch" && fromDev.category !== "switch")
+        return undefined;
+      if (toDev.category !== "patch" && toDev.category !== "switch")
+        return undefined;
+      const key = `${from.id}->${to.id}`;
       let pair = groups.get(key);
       if (!pair) {
-        pair = { panel, panelDev, sw, swDev, links: [], tight: 0 };
+        pair = {
+          from,
+          fromDev,
+          to,
+          toDev,
+          links: [],
+          tight: 0,
+          run: patchCordRunInches(from, fromDev, to, toDev),
+        };
         groups.set(key, pair);
       }
-      const run = patchCordRunInches(panel, panelDev, sw, swDev);
-      const status = cordStatus(run, link.cordLength);
+      return pair;
+    };
+    for (const link of rack.patchLinks ?? []) {
+      const from = byId.get(link.fromPlacementId);
+      const to = byId.get(link.toPlacementId);
+      if (!from || !to) continue;
+      const pair = ensurePair(from, to);
+      if (!pair) continue;
+      const status = cordStatus(pair.run, link.cordLength);
       if (status === "tight") pair.tight++;
       pair.links.push({
         link,
         drop: link.dropId ? dropById.get(link.dropId) : undefined,
-        run,
-        suggested: suggestedCordLength(run),
+        run: pair.run,
+        suggested: suggestedCordLength(pair.run),
         status,
       });
+    }
+    // Pairs started from the picker with no cables yet still get a
+    // section, so the first cable can be plugged in.
+    for (const ep of extraPairs) {
+      const from = byId.get(ep.fromId);
+      const to = byId.get(ep.toId);
+      if (!from || !to) continue;
+      ensurePair(from, to);
     }
     const out = [...groups.values()];
     for (const p of out) p.links.sort((a, b) => a.link.fromPort - b.link.fromPort);
     // Top of the rack first.
-    out.sort((a, b) => b.panel.uSlot - a.panel.uSlot);
+    out.sort((a, b) => b.from.uSlot - a.from.uSlot);
     return out;
-  }, [rack, dropById]);
+  }, [rack, dropById, extraPairs]);
+
+  /** Start a pair from the picker: an empty section appears below,
+   *  ready to patch. A pair that already has a section just scrolls
+   *  into view. */
+  const startPair = () => {
+    const fromId = pairFromId || patchable[0]?.id;
+    const toId = pairToId || patchable[1]?.id;
+    if (!fromId || !toId) return;
+    if (fromId === toId) {
+      setPairMsg("Pick two different devices.");
+      return;
+    }
+    const exists =
+      pairs.some((p) => p.from.id === fromId && p.to.id === toId) ||
+      extraPairs.some((p) => p.fromId === fromId && p.toId === toId);
+    if (exists) {
+      setPairMsg("That pair is already on this page — scrolled to it.");
+      document
+        .getElementById(`pair-${fromId}-${toId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    setPairMsg(null);
+    setExtraPairs((prev) => [...prev, { fromId, toId }]);
+    setTimeout(
+      () =>
+        document
+          .getElementById(`pair-${fromId}-${toId}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      0,
+    );
+  };
+
+  /** Unpatch from the detail card: the link goes away and its drop
+   *  stays terminated on its panel port. */
+  const handleRemovePatch = (linkId: string) => {
+    if (!rack) return;
+    removePatchLink(rack.id, linkId);
+    setBulkIds((prev) => prev.filter((id) => id !== linkId));
+    setSelectedLinkId(null);
+  };
 
   const totalLinks = pairs.reduce((n, p) => n + p.links.length, 0);
   const totalTight = pairs.reduce((n, p) => n + p.tight, 0);
@@ -424,10 +562,11 @@ export function CableView() {
         <div>
           <h2 className="text-base font-semibold text-ink-100">Cable View</h2>
           <p className="text-xs text-ink-300">
-            One picture per panel → switch pair, one cable per patch. Run is
-            the distance between the device centers (1U = 1.75&Prime;) plus
-            6&Prime; for the bend and slack. A cable is tight when the cord on
-            it is shorter than the run. Color is the VLAN, length is separate.
+            Click a port on each device to plug a cable in — patched ports
+            are amber, the picked port is blue. Run is the distance
+            between the device centers (1U = 1.75&Prime;) plus 6&Prime; for
+            the bend and slack. A cable is tight when the cord on it is
+            shorter than the run. Color is the VLAN, length is separate.
           </p>
         </div>
         <div className="text-xs text-ink-300">
@@ -456,6 +595,56 @@ export function CableView() {
         </Field>
       </div>
 
+      <div className="panel rounded-lg p-3 space-y-2 max-w-xl">
+        <div className="label">Start a new pair</div>
+        <p className="text-xs text-ink-300">
+          A pair with no patches yet has no section — pick its two devices
+          here and their bars appear below, ready to patch. Two switches
+          make an uplink pair.
+        </p>
+        {patchable.length < 2 ? (
+          <div className="text-xs text-ink-400 italic">
+            Add a patch panel and a switch to this rack to start patching.
+          </div>
+        ) : (
+          <div className="flex items-end gap-2 flex-wrap">
+            <Field label="From">
+              <select
+                className="input"
+                value={pairFromId || patchable[0]?.id || ""}
+                onChange={(e) => setPairFromId(e.target.value)}
+              >
+                {patchable.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {placementPatchName(p, rackDevicesById[p.deviceId]!)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <span className="text-ink-400 text-xs pb-2">→</span>
+            <Field label="To">
+              <select
+                className="input"
+                value={pairToId || patchable[1]?.id || ""}
+                onChange={(e) => setPairToId(e.target.value)}
+              >
+                {patchable.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {placementPatchName(p, rackDevicesById[p.deviceId]!)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <button className="btn" onClick={startPair}>
+              Start patching
+            </button>
+            {pairMsg && (
+              <span className="text-xs text-ink-300">{pairMsg}</span>
+            )}
+          </div>
+        )}
+      </div>
+
       {bulkIds.length > 0 && (
         <BulkBar
           count={bulkIds.length}
@@ -472,18 +661,21 @@ export function CableView() {
 
       {pairs.length === 0 ? (
         <div className="panel rounded-lg p-6 text-sm text-ink-300 text-center">
-          No patches yet — patch a panel to a switch on the Patch Panels tab
-          and the cables will show up here.
+          No cables yet — start a pair above and click a port on each
+          device to plug the first cable in.
         </div>
       ) : (
         pairs.map((pair) => (
           <PairSection
-            key={`${pair.panel.id}->${pair.sw.id}`}
+            key={`${pair.from.id}->${pair.to.id}`}
             rack={rack}
             pair={pair}
             selectedLinkId={selectedLinkId}
             onSelect={setSelectedLinkId}
+            onAddPatchLink={addPatchLink}
+            onAddPatchLinks={addPatchLinks}
             onSetCord={setCord}
+            onSetCords={setBulkCords}
             bulkIds={bulkIds}
             onToggleBulk={toggleBulk}
             onTogglePairBulk={() => togglePairBulk(pair)}
@@ -499,6 +691,7 @@ export function CableView() {
           onAssignDrop={assignDrop}
           onMovePatch={movePatch}
           onSetCord={setCord}
+          onRemovePatch={handleRemovePatch}
         />
       )}
     </div>
@@ -579,7 +772,10 @@ function PairSection({
   pair,
   selectedLinkId,
   onSelect,
+  onAddPatchLink,
+  onAddPatchLinks,
   onSetCord,
+  onSetCords,
   bulkIds,
   onToggleBulk,
   onTogglePairBulk,
@@ -588,24 +784,47 @@ function PairSection({
   pair: Pair;
   selectedLinkId: string | null;
   onSelect: (id: string | null) => void;
+  onAddPatchLink: (rackId: string, link: RackPatchLink) => void;
+  onAddPatchLinks: (rackId: string, links: RackPatchLink[]) => void;
   onSetCord: (
     rackId: string,
     linkId: string,
     cord: { length?: 1 | 3 | 5; color?: CordColor },
   ) => void;
+  onSetCords: (
+    rackId: string,
+    updates: Array<{
+      linkId: string;
+      cord: { length?: 1 | 3 | 5; color?: CordColor };
+    }>,
+  ) => void;
   bulkIds: string[];
   onToggleBulk: (id: string) => void;
   onTogglePairBulk: () => void;
 }) {
-  const { panel, panelDev, sw, swDev, links } = pair;
+  const { from, fromDev, to, toDev, links } = pair;
   const allBulk =
     links.length > 0 && links.every((e) => bulkIds.includes(e.link.id));
   const someBulk = links.some((e) => bulkIds.includes(e.link.id));
+  // Click-to-patch: the port picked on the top device, waiting for its
+  // partner on the bottom device.
+  const [pickedPort, setPickedPort] = useState<number | null>(null);
+  // The cord every new cable from this pair gets: Suggested gives each
+  // cable its own length from the pair's run; green is the default
+  // color, "—" records no color.
+  const [newLength, setNewLength] = useState<
+    "suggested" | "1" | "3" | "5"
+  >("suggested");
+  const [newColor, setNewColor] = useState<"" | CordColor>("green");
+  const [showRange, setShowRange] = useState(false);
+  const [rangeFrom, setRangeFrom] = useState("1");
+  const [rangeTo, setRangeTo] = useState("12");
+  const [rangeStart, setRangeStart] = useState("1");
   // Port hover: the port square the mouse is over, with the cursor
   // position for the tooltip. The tooltip names the drop on that port,
   // and the port's cable lights up while the rest dim.
   const [portHover, setPortHover] = useState<{
-    side: "panel" | "switch";
+    side: "from" | "to";
     n: number;
     isSfp: boolean;
     x: number;
@@ -613,7 +832,7 @@ function PairSection({
   } | null>(null);
 
   const onPortHover = (
-    side: "panel" | "switch",
+    side: "from" | "to",
     n: number,
     isSfp: boolean,
     ev: { clientX: number; clientY: number },
@@ -623,25 +842,174 @@ function PairSection({
 
   const onPortLeave = () => setPortHover(null);
 
-  const panelName = placementPatchName(panel, panelDev);
-  const swName = placementPatchName(sw, swDev);
+  const fromName = placementPatchName(from, fromDev);
+  const toName = placementPatchName(to, toDev);
+  const fromPatched = new Set(links.map((e) => e.link.fromPort));
+  const toPatched = new Set(links.map((e) => e.link.toPort));
+  const pickedLink =
+    pickedPort !== null
+      ? links.find((e) => e.link.fromPort === pickedPort)
+      : undefined;
+  const destPort = pickedLink?.link.toPort ?? null;
+
+  /** The cord a new cable from this pair gets, from the toolbar picks. */
+  const newCordFor = (): { length?: 1 | 3 | 5; color?: CordColor } => {
+    const cord: { length?: 1 | 3 | 5; color?: CordColor } = {};
+    const len =
+      newLength === "suggested"
+        ? suggestedCordLength(pair.run)
+        : (Number(newLength) as 1 | 3 | 5);
+    if (len !== undefined) cord.length = len;
+    if (newColor !== "") cord.color = newColor;
+    return cord;
+  };
+
+  /** Record the toolbar cord on freshly plugged cables, in one save. */
+  const applyNewCords = (made: RackPatchLink[]) => {
+    const cord = newCordFor();
+    if (!("length" in cord) && !("color" in cord)) return;
+    onSetCords(
+      rack.id,
+      made.map((l) => ({ linkId: l.id, cord })),
+    );
+  };
+
+  /** Click a port on the top device: pick it (and open its cable, if
+   *  it has one). Clicking the same port again unpicks it. */
+  const onFromPortClick = (port: number) => {
+    setPickedPort((cur) => (cur === port ? null : port));
+    const link = links.find((e) => e.link.fromPort === port);
+    onSelect(link ? link.link.id : null);
+  };
+
+  /** Click a port on the bottom device: with a top port picked, plug
+   *  the cable in. Plugging into a taken port takes it over — the old
+   *  cable's drop goes back to its panel port, same as the sidebar.
+   *  With nothing picked, jump to the cable on this port, if any. */
+  const onToPortClick = (port: number) => {
+    if (pickedPort === null) {
+      const link = links.find((e) => e.link.toPort === port);
+      if (link) {
+        setPickedPort(link.link.fromPort);
+        onSelect(link.link.id);
+      }
+      return;
+    }
+    const id = uid();
+    onAddPatchLink(rack.id, {
+      id,
+      fromPlacementId: from.id,
+      fromPort: pickedPort,
+      toPlacementId: to.id,
+      toPort: port,
+    });
+    const cord = newCordFor();
+    if ("length" in cord || "color" in cord) onSetCord(rack.id, id, cord);
+    setPickedPort(null);
+    onSelect(id);
+  };
+
+  /** RJ45 ports on a device — SFP slots never take a patch here. */
+  const rj45Ports = (dev: RackDeviceType) =>
+    Array.from({ length: rj45Count(dev) }, (_, i) => i + 1);
+
+  /** Auto-map 1:1 down the pair, skipping ports that already have a
+   *  cable — unlike the sidebar, which re-patches them (and drops the
+   *  cord on the replaced link). */
+  const autoMap = () => {
+    const fromPorts = rj45Ports(fromDev);
+    const toPorts = rj45Ports(toDev);
+    const n = Math.min(fromPorts.length, toPorts.length);
+    const made: RackPatchLink[] = [];
+    for (let i = 0; i < n; i++) {
+      const fp = fromPorts[i];
+      const tp = toPorts[i];
+      if (
+        links.some((e) => e.link.fromPort === fp || e.link.toPort === tp)
+      )
+        continue;
+      made.push({
+        id: uid(),
+        fromPlacementId: from.id,
+        fromPort: fp,
+        toPlacementId: to.id,
+        toPort: tp,
+      });
+    }
+    if (made.length === 0) return;
+    onAddPatchLinks(rack.id, made);
+    applyNewCords(made);
+    setPickedPort(null);
+    onSelect(null);
+  };
+
+  const rangeValid = (() => {
+    const f = parseInt(rangeFrom, 10);
+    const t = parseInt(rangeTo, 10);
+    const s = parseInt(rangeStart, 10);
+    const fromN = rj45Count(fromDev);
+    const toN = rj45Count(toDev);
+    return (
+      isFinite(f) &&
+      isFinite(t) &&
+      isFinite(s) &&
+      f >= 1 &&
+      t >= f &&
+      t <= fromN &&
+      s >= 1 &&
+      s + (t - f) <= toN
+    );
+  })();
+
+  const applyRange = () => {
+    if (!rangeValid) return;
+    const f = parseInt(rangeFrom, 10);
+    const t = parseInt(rangeTo, 10);
+    const s = parseInt(rangeStart, 10);
+    const made: RackPatchLink[] = [];
+    for (let i = 0; i <= t - f; i++) {
+      const fp = f + i;
+      const tp = s + i;
+      if (
+        links.some((e) => e.link.fromPort === fp || e.link.toPort === tp)
+      )
+        continue;
+      made.push({
+        id: uid(),
+        fromPlacementId: from.id,
+        fromPort: fp,
+        toPlacementId: to.id,
+        toPort: tp,
+      });
+    }
+    setShowRange(false);
+    if (made.length === 0) return;
+    onAddPatchLinks(rack.id, made);
+    applyNewCords(made);
+    setPickedPort(null);
+    onSelect(null);
+  };
+
   const hoveredLink =
     portHover && !portHover.isSfp
-      ? portHover.side === "panel"
+      ? portHover.side === "from"
         ? links.find((e) => e.link.fromPort === portHover.n)
         : links.find((e) => e.link.toPort === portHover.n)
       : undefined;
   const hoveredLinkId = hoveredLink?.link.id;
   const gapU = Math.abs(
-    (panel.uSlot + (placementUHeight(panel, panelDev) - 1) / 2) -
-      (sw.uSlot + (placementUHeight(sw, swDev) - 1) / 2),
+    (from.uSlot + (placementUHeight(from, fromDev) - 1) / 2) -
+      (to.uSlot + (placementUHeight(to, toDev) - 1) / 2),
   );
-  const panelY = 24;
-  const switchY = panelY + 120 + Math.round(gapU * 8);
-  const height = switchY + 78;
+  const fromY = 24;
+  const toY = fromY + 120 + Math.round(gapU * 8);
+  const height = toY + 78;
 
   return (
-    <div className="panel rounded-lg p-3 space-y-3">
+    <div
+      id={`pair-${from.id}-${to.id}`}
+      className="panel rounded-lg p-3 space-y-3"
+    >
       <div className="flex items-baseline justify-between flex-wrap gap-1">
         <div className="label flex items-center gap-2">
           <input
@@ -653,11 +1021,10 @@ function PairSection({
             onChange={onTogglePairBulk}
             aria-label={`Select all ${links.length} cables in this pair`}
           />
-          {placementPatchName(panel, panelDev)} →{" "}
-          {placementPatchName(sw, swDev)}
+          {fromName} → {toName}
           <span className="ml-2 font-normal text-ink-300">
-            {panelDev.label} · {swDev.model ? `${swDev.model} · ` : ""}
-            {uRange(panel, panelDev)} → {uRange(sw, swDev)} · {gapU % 1 === 0 ? gapU : gapU.toFixed(1)}U apart
+            {fromDev.label} · {toDev.model ? `${toDev.model} · ` : ""}
+            {uRange(from, fromDev)} → {uRange(to, toDev)} · {gapU % 1 === 0 ? gapU : gapU.toFixed(1)}U apart
           </span>
         </div>
         <div className="text-xs text-ink-300">
@@ -670,39 +1037,136 @@ function PairSection({
         </div>
       </div>
 
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <span className="text-ink-300 flex-1 min-w-[220px]">
+          {pickedPort !== null ? (
+            <>
+              <b className="text-ink-100">
+                {fromName} port {pickedPort}
+              </b>{" "}
+              picked — now click its {toName} port.
+            </>
+          ) : (
+            <>
+              Click a port on {fromName}, then a port on {toName}.
+            </>
+          )}
+        </span>
+        <label className="flex items-center gap-1.5 text-ink-300">
+          Cord for new cables
+          <select
+            className="input !py-0.5 !px-1 text-xs w-[110px]"
+            value={newLength}
+            onChange={(e) =>
+              setNewLength(
+                e.target.value as "suggested" | "1" | "3" | "5",
+              )
+            }
+            aria-label="New cord length"
+          >
+            <option value="suggested">Suggested</option>
+            <option value="1">1 ft</option>
+            <option value="3">3 ft</option>
+            <option value="5">5 ft</option>
+          </select>
+          <select
+            className="input !py-0.5 !px-1 text-xs w-[100px]"
+            value={newColor}
+            onChange={(e) => setNewColor(e.target.value as "" | CordColor)}
+            aria-label="New cord color (VLAN)"
+          >
+            <option value="">— color</option>
+            {CORD_COLORS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button className="btn btn-sm" onClick={autoMap}>
+          Auto-map 1:1
+        </button>
+        <button className="btn btn-sm" onClick={() => setShowRange((v) => !v)}>
+          Map range…
+        </button>
+      </div>
+
+      {showRange && (
+        <div className="flex items-end gap-1.5 text-xs">
+          <Field label={fromName}>
+            <input
+              className="input font-mono w-14"
+              inputMode="numeric"
+              value={rangeFrom}
+              onChange={(e) => setRangeFrom(e.target.value)}
+            />
+          </Field>
+          <span className="text-ink-400 pb-2">to</span>
+          <Field label={fromName}>
+            <input
+              className="input font-mono w-14"
+              inputMode="numeric"
+              value={rangeTo}
+              onChange={(e) => setRangeTo(e.target.value)}
+            />
+          </Field>
+          <Field label={`${toName} from`}>
+            <input
+              className="input font-mono w-14"
+              inputMode="numeric"
+              value={rangeStart}
+              onChange={(e) => setRangeStart(e.target.value)}
+            />
+          </Field>
+          <button
+            className="btn-primary"
+            disabled={!rangeValid}
+            onClick={applyRange}
+          >
+            Apply
+          </button>
+        </div>
+      )}
+
       <svg
         viewBox={`0 0 900 ${height}`}
         className="w-full"
         role="img"
-        aria-label={`${placementPatchName(panel, panelDev)} to ${placementPatchName(sw, swDev)} cables`}
+        aria-label={`${fromName} to ${toName} cables`}
       >
         <DeviceBar
-          p={panel}
-          dev={panelDev}
-          y={panelY}
+          p={from}
+          dev={fromDev}
+          y={fromY}
           hoveredPort={
-            portHover?.side === "panel"
+            portHover?.side === "from"
               ? { n: portHover.n, isSfp: portHover.isSfp }
               : null
           }
-          onPortHover={(n, isSfp, ev) => onPortHover("panel", n, isSfp, ev)}
+          onPortHover={(n, isSfp, ev) => onPortHover("from", n, isSfp, ev)}
           onPortLeave={onPortLeave}
+          patchedPorts={fromPatched}
+          selectedPort={pickedPort}
+          onPortClick={onFromPortClick}
         />
         <DeviceBar
-          p={sw}
-          dev={swDev}
-          y={switchY}
+          p={to}
+          dev={toDev}
+          y={toY}
           hoveredPort={
-            portHover?.side === "switch"
+            portHover?.side === "to"
               ? { n: portHover.n, isSfp: portHover.isSfp }
               : null
           }
-          onPortHover={(n, isSfp, ev) => onPortHover("switch", n, isSfp, ev)}
+          onPortHover={(n, isSfp, ev) => onPortHover("to", n, isSfp, ev)}
           onPortLeave={onPortLeave}
+          patchedPorts={toPatched}
+          destPort={destPort}
+          onPortClick={onToPortClick}
         />
         {links.map(({ link, drop, status }) => {
-          const a = portPoint(panelDev, panelY, link.fromPort);
-          const b = portPoint(swDev, switchY, link.toPort);
+          const a = portPoint(fromDev, fromY, link.fromPort);
+          const b = portPoint(toDev, toY, link.toPort);
           const midY = (a.y + b.y) / 2;
           const color = link.cordColor
             ? CORD_HEX[link.cordColor]
@@ -721,8 +1185,8 @@ function PairSection({
               opacity={hoveredLinkId && link.id !== hoveredLinkId ? 0.15 : 1}
             >
               <title>
-                {label || "No drop"} · {placementPatchName(panel, panelDev)}{" "}
-                {link.fromPort} → {placementPatchName(sw, swDev)} / P{" "}
+                {label || "No drop"} · {fromName}{" "}
+                {link.fromPort} → {toName} / P{" "}
                 {link.toPort}
                 {link.cordLength ? ` · ${link.cordLength} ft` : ""}
                 {link.cordColor ? ` · ${link.cordColor}` : ""}
@@ -779,8 +1243,8 @@ function PairSection({
               <th className="py-1 pr-2 font-medium w-6" aria-label="Select row" />
               <th className="py-1 pr-2 font-medium">Drop</th>
               <th className="py-1 pr-2 font-medium">Device</th>
-              <th className="py-1 pr-2 font-medium">Panel port</th>
-              <th className="py-1 pr-2 font-medium">Switch port</th>
+              <th className="py-1 pr-2 font-medium">{fromName} port</th>
+              <th className="py-1 pr-2 font-medium">{toName} port</th>
               <th className="py-1 pr-2 font-medium">Run</th>
               <th className="py-1 pr-2 font-medium">Cord</th>
               <th className="py-1 pr-2 font-medium">Suggested</th>
@@ -817,10 +1281,10 @@ function PairSection({
                   )}
                 </td>
                 <td className="py-1 pr-2 text-ink-100">
-                  {placementPatchName(panel, panelDev)} {link.fromPort}
+                  {fromName} {link.fromPort}
                 </td>
                 <td className="py-1 pr-2 text-ink-100">
-                  {placementPatchName(sw, swDev)} / P {link.toPort}
+                  {toName} / P {link.toPort}
                 </td>
                 <td className="py-1 pr-2 text-ink-100">
                   ~{Math.round(run)}&Prime;
@@ -860,7 +1324,7 @@ function PairSection({
           }}
         >
           <div className="text-[13px] font-bold text-ink-100">
-            {portHover.side === "panel" ? panelName : swName} ·{" "}
+            {portHover.side === "from" ? fromName : toName} ·{" "}
             {portHover.isSfp ? `SFP ${portHover.n}` : `Port ${portHover.n}`}
           </div>
           {portHover.isSfp ? (
@@ -884,18 +1348,18 @@ function PairSection({
                 </b>
               </div>
               <div className="text-ink-100">
-                {portHover.side === "panel" ? (
+                {portHover.side === "from" ? (
                   <>
                     Patches to:{" "}
                     <b className="font-semibold">
-                      {swName} / P {hoveredLink.link.toPort}
+                      {toName} / P {hoveredLink.link.toPort}
                     </b>
                   </>
                 ) : (
                   <>
                     From:{" "}
                     <b className="font-semibold">
-                      {panelName} · Port {hoveredLink.link.fromPort}
+                      {fromName} · Port {hoveredLink.link.fromPort}
                     </b>
                   </>
                 )}
@@ -919,7 +1383,7 @@ function PairSection({
             </>
           ) : (
             <div className="italic text-ink-300">
-              {portHover.side === "panel"
+              {portHover.side === "from"
                 ? "No drop — not patched"
                 : "No patch — free"}
             </div>
@@ -982,6 +1446,7 @@ function DetailCard({
   onAssignDrop,
   onMovePatch,
   onSetCord,
+  onRemovePatch,
 }: {
   rack: Rack;
   pair: Pair;
@@ -1003,24 +1468,25 @@ function DetailCard({
     linkId: string,
     cord: { length?: 1 | 3 | 5; color?: CordColor },
   ) => void;
+  onRemovePatch: (linkId: string) => void;
 }) {
   const { link, drop, run, suggested, status } = enriched;
-  const { panel, panelDev, sw, swDev } = pair;
+  const { from, fromDev, to, toDev } = pair;
 
   // Panel ports with no drop on them (a patched port with no drop still
   // takes one) — plus the drop's current port.
   const dropPorts = useMemo(() => {
     const taken = new Set<number>();
     for (const l of rack.patchLinks ?? []) {
-      if (l.fromPlacementId === panel.id && l.dropId) taken.add(l.fromPort);
+      if (l.fromPlacementId === from.id && l.dropId) taken.add(l.fromPort);
     }
     for (const d of rack.panelPortDrops ?? []) {
-      if (d.placementId === panel.id) taken.add(d.port);
+      if (d.placementId === from.id) taken.add(d.port);
     }
-    return patchablePorts(panelDev).filter(
+    return patchablePorts(fromDev).filter(
       (p) => !taken.has(p) || p === link.fromPort,
     );
-  }, [rack, panel, panelDev, link.fromPort]);
+  }, [rack, from, fromDev, link.fromPort]);
 
   const switches = useMemo(
     () =>
@@ -1030,10 +1496,10 @@ function DetailCard({
       }),
     [rack],
   );
-  const [moveSwitchId, setMoveSwitchId] = useState(sw.id);
+  const [moveSwitchId, setMoveSwitchId] = useState(to.id);
   useEffect(() => {
-    setMoveSwitchId(sw.id);
-  }, [link.id, sw.id]);
+    setMoveSwitchId(to.id);
+  }, [link.id, to.id]);
   const moveSwDev = moveSwitchId
     ? rackDevicesById[
         switches.find((p) => p.id === moveSwitchId)?.deviceId ?? ""
@@ -1060,8 +1526,8 @@ function DetailCard({
           {drop?.deviceType?.trim() ? ` · ${drop.deviceType}` : ""}
         </div>
         <div className="text-xs text-ink-300">
-          {placementPatchName(panel, panelDev)} {link.fromPort} →{" "}
-          {placementPatchName(sw, swDev)} / P {link.toPort} · Run ~
+          {placementPatchName(from, fromDev)} {link.fromPort} →{" "}
+          {placementPatchName(to, toDev)} / P {link.toPort} · Run ~
           {Math.round(run)}&Prime; · Cord{" "}
           {link.cordLength ? `${link.cordLength} ft` : "—"}
           {link.cordColor ? ` · ${link.cordColor}` : ""} · Suggested{" "}
@@ -1085,7 +1551,7 @@ function DetailCard({
               onChange={(e) =>
                 onAssignDrop(
                   rack.id,
-                  panel.id,
+                  from.id,
                   Number(e.target.value),
                   drop.id,
                 )
@@ -1093,7 +1559,7 @@ function DetailCard({
             >
               {dropPorts.map((p) => (
                 <option key={p} value={p}>
-                  {placementPatchName(panel, panelDev)} {p}
+                  {placementPatchName(from, fromDev)} {p}
                   {p === link.fromPort ? " (current)" : ""}
                 </option>
               ))}
@@ -1111,7 +1577,7 @@ function DetailCard({
               return (
                 <option key={p.id} value={p.id}>
                   {placementPatchName(p, d)}
-                  {p.id === sw.id ? " (current)" : ""}
+                  {p.id === to.id ? " (current)" : ""}
                 </option>
               );
             })}
@@ -1129,7 +1595,7 @@ function DetailCard({
             <option value="">Pick a port…</option>
             {movePorts.map((p) => (
               <option key={p} value={p}>
-                {moveSwitchId === sw.id && p === link.toPort
+                {moveSwitchId === to.id && p === link.toPort
                   ? `P ${p} (current)`
                   : `P ${p}`}
               </option>
@@ -1155,6 +1621,12 @@ function DetailCard({
             Use suggested {suggested} ft
           </button>
         )}
+        <button
+          className="btn btn-sm text-signal-red"
+          onClick={() => onRemovePatch(link.id)}
+        >
+          Remove this patch
+        </button>
       </div>
     </div>
   );
