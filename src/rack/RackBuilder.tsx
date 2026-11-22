@@ -18,6 +18,9 @@ export function RackBuilder() {
   // Black & white export for printers with no color — same layout, white
   // page, black text and bars, gray faceplates. Stays as set between exports.
   const [bwExport, setBwExport] = useState(false);
+  // Totals box on the elevation — sometimes not needed. On by default,
+  // same per-export choice as B&W, not saved in the project.
+  const [showTotals, setShowTotals] = useState(true);
 
   useEffect(() => {
     setSelectedPlacementId(null);
@@ -41,7 +44,7 @@ export function RackBuilder() {
   const onExport = async () => {
     if (!project || !activeRack) return;
     try {
-      await exportRackElevation(project, activeRack, { blackAndWhite: bwExport });
+      await exportRackElevation(project, activeRack, { blackAndWhite: bwExport, showTotals });
       pushToast("success", bwExport ? "Rack elevation exported (B&W)" : "Rack elevation exported");
     } catch (e) {
       console.error(e);
@@ -92,6 +95,13 @@ export function RackBuilder() {
             title="Black & white export — same layout, white page, for printers with no color"
           >
             B&W
+          </button>
+          <button
+            onClick={() => setShowTotals((v) => !v)}
+            className={showTotals ? "btn-primary" : "btn"}
+            title="Show the totals box on the elevation export — turn off when it's not needed"
+          >
+            Totals
           </button>
           <button onClick={onExport} className="btn-primary" disabled={!activeRack}>
             <FileDown className="w-3.5 h-3.5" />

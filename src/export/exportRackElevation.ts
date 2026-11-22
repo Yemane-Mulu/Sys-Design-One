@@ -18,7 +18,7 @@ import {
   patchTableRows,
   placementUHeight,
   placementWidth,
-  type DevicesBySwitchRow,
+  type PatchTableRow,
 } from "../rack/rackUtils";
 import { allDropMarkups } from "../lib/dropLabels";
 
@@ -148,7 +148,7 @@ function bwTheme(): ElevTheme {
 export async function exportRackElevation(
   project: Project,
   rack: Rack,
-  opts?: { blackAndWhite?: boolean },
+  opts?: { blackAndWhite?: boolean; showTotals?: boolean },
 ) {
   const out = await PDFDocument.create();
   const fonts = await loadBrandFonts(out);
@@ -156,25 +156,28 @@ export async function exportRackElevation(
   const logoImage = await maybeEmbedLogo(out, branding.logoDataUrl);
   // Letter portrait — fits a 42U rack comfortably with title + schedule.
   const page = out.addPage([612, 792]);
-  drawElevation(page, fonts, project, rack, branding, logoImage, opts?.blackAndWhite ?? false);
+  const showTotals = opts?.showTotals ?? true;
+  drawElevation(page, fonts, project, rack, branding, logoImage, opts?.blackAndWhite ?? false, showTotals);
 
-  // Devices get their own page: the schedule panel is only as tall as
-  // the rack, and a full patching table already fills it — the box had
-  // no room there, and reserving room for it cut the schedule table.
-  // Only added when at least one drop has both a device type and a switch.
+  // Patching gets its own page, two columns, every drop included — the
+  // schedule panel is only as tall as the rack and a full patching table
+  // never fit there. Pages repeat while rows remain; a rack with no
+  // patching rows gets no extra page.
   const dropsById = new Map(allDropMarkups(project).map((d) => [d.id, d]));
-  const deviceRows = devicesBySwitchRows(rack, rackDevicesById, dropsById);
-  if (deviceRows.length > 0) {
-    const page2 = out.addPage([612, 792]);
-    drawDevicesPage(
-      page2,
+  const patchRows = patchTableRows(rack, rackDevicesById, dropsById);
+  let patchStart = 0;
+  while (patchStart < patchRows.length) {
+    const patchPage = out.addPage([612, 792]);
+    patchStart = drawPatchingPage(
+      patchPage,
       fonts,
       project,
       rack,
       branding,
       logoImage,
       opts?.blackAndWhite ?? false,
-      deviceRows,
+      patchRows,
+      patchStart,
     );
   }
 
@@ -219,6 +222,7 @@ function drawElevation(
   branding: BrandingConfig,
   logoImage: PDFImage | undefined,
   blackAndWhite: boolean,
+  showTotals: boolean,
 ) {
   const { width: pw, height: ph } = page.getSize();
   const theme = blackAndWhite ? bwTheme() : colorTheme(hex(branding.accentColor));
@@ -351,7 +355,7 @@ function drawElevation(
   }
 
   // ─── Schedule + totals ───
-  drawSchedule(page, fonts, project, rack, 290, rackBottom, pw - 320, rackHeight, theme);
+  drawSchedule(page, fonts, project, rack, 290, rackBottom, pw - 320, rackHeight, theme, showTotals);
 
   // Footer — drawnBy falls through to the brand's full name when the
   // user hasn't put their own name in the project metadata.
@@ -369,10 +373,14 @@ function drawElevation(
   );
 }
 
-/** Second page of the elevation: the devices-by-switch table on its own
- *  page, with the same header and footer as page one. One row per device
- *  type per switch, switch ports collapsed into ranges. */
-function drawDevicesPage(
+/** Patching page: the full patching table on its own page, with the same
+ *  header and footer as page one. Two columns, rows split evenly across
+ *  them, so a full 48-port panel fits on one page and no drop is ever
+ *  cut. Draws the rows starting at `start` and returns the index after
+ *  the last row drawn, so the caller can add more pages while rows
+ *  remain. A drop-first port prints with a blank switch cell; a patched
+ *  port with no drop yet prints with a blank drop cell. */
+function drawPatchingPage(
   page: PDFPage,
   fonts: BrandFonts,
   project: Project,
@@ -380,8 +388,9 @@ function drawDevicesPage(
   branding: BrandingConfig,
   logoImage: PDFImage | undefined,
   blackAndWhite: boolean,
-  deviceRows: DevicesBySwitchRow[],
-) {
+  patchRows: PatchTableRow[],
+  start: number,
+): number {
   const { width: pw, height: ph } = page.getSize();
   const theme = blackAndWhite ? bwTheme() : colorTheme(hex(branding.accentColor));
   const ACCENT = theme.accent;
@@ -448,41 +457,53 @@ function drawDevicesPage(
     color: theme.ink300,
   });
 
-  // Table — full page width, same amber header as the schedule panel.
+  // Table — two columns, same amber header as the schedule panel. Rows
+  // split evenly across the columns; a chunk is sized to what fits on
+  // one page, so nothing is ever cut.
   const x = 30;
   const w = pw - 60;
+  const gutter = 24;
+  const colW = (w - gutter) / 2;
   let py = ph - 170;
-  page.drawText("DEVICES BY SWITCH", { x, y: py, size: 11, font: fonts.bold, color: theme.accent });
+  page.drawText("PATCHING", { x, y: py, size: 11, font: fonts.bold, color: theme.accent });
   py -= 18;
-  const colX = [x + 12, x + w / 3, x + (2 * w) / 3];
-  const colW = [w / 3 - 20, w / 3 - 12, w / 3 - 12];
-  page.drawRectangle({
-    x: x + 6,
-    y: py - 14,
-    width: w - 12,
-    height: 14,
-    color: theme.accent,
-  });
-  page.drawText("DEVICE", { x: colX[0], y: py - 11, size: 7, font: fonts.bold, color: theme.onAccent });
-  page.drawText("SWITCH", { x: colX[1], y: py - 11, size: 7, font: fonts.bold, color: theme.onAccent });
-  page.drawText("PORTS", { x: colX[2], y: py - 11, size: 7, font: fonts.bold, color: theme.onAccent });
-  py -= 14;
-  for (const row of deviceRows) {
-    py -= 11;
-    if (py < 40) {
-      page.drawText("…", { x: x + 8, y: py, size: 8, font: fonts.bold, color: theme.ink400 });
-      break;
-    }
-    const cells = [row.device, row.switch, row.ports];
-    cells.forEach((cell, i) => {
-      page.drawText(safeText(fitText(fonts.regular, cell, colW[i], 7)), {
-        x: colX[i],
-        y: py,
-        size: 7,
-        font: fonts.regular,
-        color: theme.ink,
-      });
+  // Rows per column, from the geometry above: header bar 14pt, rows
+  // 11pt each, down to the footer line at y=40.
+  const perCol = Math.max(1, Math.floor((py - 14 - 40) / 11));
+  const chunk = patchRows.slice(start, start + perCol * 2);
+  const leftCount = Math.ceil(chunk.length / 2);
+  const cols = [
+    { cx: x, rows: chunk.slice(0, leftCount) },
+    { cx: x + colW + gutter, rows: chunk.slice(leftCount) },
+  ];
+  for (const col of cols) {
+    const colX = [col.cx + 8, col.cx + colW / 3, col.cx + (2 * colW) / 3];
+    const colWidths = [colW / 3 - 16, colW / 3 - 8, colW / 3 - 8];
+    let cpy = py;
+    page.drawRectangle({
+      x: col.cx + 6,
+      y: cpy - 14,
+      width: colW - 12,
+      height: 14,
+      color: theme.accent,
     });
+    page.drawText("DROP", { x: colX[0], y: cpy - 11, size: 7, font: fonts.bold, color: theme.onAccent });
+    page.drawText("PATCH PANEL", { x: colX[1], y: cpy - 11, size: 7, font: fonts.bold, color: theme.onAccent });
+    page.drawText("SWITCH", { x: colX[2], y: cpy - 11, size: 7, font: fonts.bold, color: theme.onAccent });
+    cpy -= 14;
+    for (const row of col.rows) {
+      cpy -= 11;
+      const cells = [row.drop, row.panel, row.switch];
+      cells.forEach((cell, i) => {
+        page.drawText(safeText(fitText(fonts.regular, cell, colWidths[i], 7)), {
+          x: colX[i],
+          y: cpy,
+          size: 7,
+          font: fonts.regular,
+          color: theme.ink,
+        });
+      });
+    }
   }
 
   page.drawText(
@@ -491,6 +512,8 @@ function drawDevicesPage(
     ),
     { x: 30, y: 24, size: 7, font: fonts.regular, color: theme.ink400 },
   );
+
+  return start + chunk.length;
 }
 
 // ───── Rail with hole pattern + U numbers ─────
@@ -829,6 +852,7 @@ function drawSchedule(
   w: number,
   h: number,
   theme: ElevTheme,
+  showTotals: boolean,
 ) {
   // Background panel
   page.drawRectangle({
@@ -878,14 +902,15 @@ function drawSchedule(
     color: theme.ink500,
   });
 
-  // Patch rows print under the totals; reserve room for them at the
-  // bottom of the panel so rows never run into the totals box. One row per
-  // patched port — Drop | Patch panel | Switch, e.g. "NJCK-022 | PP 1 |
-  // SW 1 / P 1". Rows with no drop yet print with a blank drop cell.
+  // The devices table prints under the totals; reserve room for it at
+  // the bottom of the panel so the schedule rows never run into the
+  // totals box or the devices table. Patching lives on its own page now,
+  // so it reserves nothing here.
   const dropsById = new Map(allDropMarkups(project).map((d) => [d.id, d]));
-  const patchRows = patchTableRows(rack, rackDevicesById, dropsById);
+  const deviceRows = devicesBySwitchRows(rack, rackDevicesById, dropsById);
   const reserve =
-    100 + (patchRows.length > 0 ? 45 + patchRows.length * 11 : 0);
+    (showTotals ? 100 : 12) +
+    (deviceRows.length > 0 ? 45 + deviceRows.length * 11 : 0);
 
   let totalW = 0;
   let totalLb = 0;
@@ -922,56 +947,60 @@ function drawSchedule(
   const totalUsed = occupiedUSlots(rack).size;
 
   // Totals box sits directly under the last schedule row, not pinned to
-  // the bottom of the panel.
+  // the bottom of the panel. Off means no box at all — the devices table
+  // (or the panel bottom) just moves up to the schedule rows.
   const tbH = 88;
   const tbY = cursorY - 6 - tbH;
-  page.drawRectangle({
-    x: x + 6,
-    y: tbY,
-    width: w - 12,
-    height: tbH,
-    color: theme.totalsBg,
-    borderColor: theme.accent,
-    borderWidth: 0.4,
-  });
-  page.drawRectangle({
-    x: x + 6,
-    y: tbY + tbH - 14,
-    width: w - 12,
-    height: 14,
-    color: theme.accent,
-  });
-  page.drawText("TOTALS", {
-    x: x + 12,
-    y: tbY + tbH - 11,
-    size: 8,
-    font: fonts.bold,
-    color: theme.onAccent,
-  });
+  if (showTotals) {
+    page.drawRectangle({
+      x: x + 6,
+      y: tbY,
+      width: w - 12,
+      height: tbH,
+      color: theme.totalsBg,
+      borderColor: theme.accent,
+      borderWidth: 0.4,
+    });
+    page.drawRectangle({
+      x: x + 6,
+      y: tbY + tbH - 14,
+      width: w - 12,
+      height: 14,
+      color: theme.accent,
+    });
+    page.drawText("TOTALS", {
+      x: x + 12,
+      y: tbY + tbH - 11,
+      size: 8,
+      font: fonts.bold,
+      color: theme.onAccent,
+    });
 
-  const lines: [string, string][] = [
-    ["U Used", `${totalUsed} / ${rack.uHeight} U  (${rack.uHeight - totalUsed} free)`],
-    ["Power", `${totalW} W`],
-    ["Weight", `${totalLb} lb`],
-    ["Material", usd(totalCost)],
-  ];
-  let ly = tbY + tbH - 28;
-  for (const [k, v] of lines) {
-    page.drawText(k, { x: x + 12, y: ly, size: 8, font: fonts.regular, color: theme.ink300 });
-    const vw = fonts.bold.widthOfTextAtSize(v, 8);
-    page.drawText(v, { x: x + w - 12 - vw, y: ly, size: 8, font: fonts.bold, color: theme.ink });
-    ly -= 14;
+    const lines: [string, string][] = [
+      ["U Used", `${totalUsed} / ${rack.uHeight} U  (${rack.uHeight - totalUsed} free)`],
+      ["Power", `${totalW} W`],
+      ["Weight", `${totalLb} lb`],
+      ["Material", usd(totalCost)],
+    ];
+    let ly = tbY + tbH - 28;
+    for (const [k, v] of lines) {
+      page.drawText(k, { x: x + 12, y: ly, size: 8, font: fonts.regular, color: theme.ink300 });
+      const vw = fonts.bold.widthOfTextAtSize(v, 8);
+      page.drawText(v, { x: x + w - 12 - vw, y: ly, size: 8, font: fonts.bold, color: theme.ink });
+      ly -= 14;
+    }
   }
 
-  // Patching — three-column table, one row per panel port that has a
-  // drop, a switch patch, or both. A drop-first port prints with a
-  // blank switch cell; a patched port with no drop yet prints with a
-  // blank drop cell. Panel top-down then by port number.
-  if (patchRows.length > 0) {
-    let py = tbY - 12;
-    const patchColX = [x + 12, x + w / 3, x + (2 * w) / 3];
-    const patchColW = [w / 3 - 20, w / 3 - 12, w / 3 - 12];
-    page.drawText("PATCHING", {
+  // Devices by switch — one row per device type per switch, with the
+  // switch ports collapsed into ranges. Only drops that have both a
+  // device type and a switch patch appear. Sits under the totals, or
+  // under the schedule when totals are off.
+  const contentTop = showTotals ? tbY : cursorY - 6;
+  if (deviceRows.length > 0) {
+    let py = contentTop - 12;
+    const devColX = [x + 12, x + w / 3, x + (2 * w) / 3];
+    const devColW = [w / 3 - 20, w / 3 - 12, w / 3 - 12];
+    page.drawText("DEVICES BY SWITCH", {
       x: x + 8,
       y: py,
       size: 8,
@@ -986,38 +1015,38 @@ function drawSchedule(
       height: 14,
       color: theme.accent,
     });
-    page.drawText("DROP", {
-      x: patchColX[0],
-      y: py - 11,
-      size: 7,
-      font: fonts.bold,
-      color: theme.onAccent,
-    });
-    page.drawText("PATCH PANEL", {
-      x: patchColX[1],
+    page.drawText("DEVICE", {
+      x: devColX[0],
       y: py - 11,
       size: 7,
       font: fonts.bold,
       color: theme.onAccent,
     });
     page.drawText("SWITCH", {
-      x: patchColX[2],
+      x: devColX[1],
+      y: py - 11,
+      size: 7,
+      font: fonts.bold,
+      color: theme.onAccent,
+    });
+    page.drawText("PORTS", {
+      x: devColX[2],
       y: py - 11,
       size: 7,
       font: fonts.bold,
       color: theme.onAccent,
     });
     py -= 14;
-    for (const row of patchRows) {
+    for (const row of deviceRows) {
       py -= 11;
       if (py < y + 10) {
         page.drawText("…", { x: x + 8, y: py, size: 8, font: fonts.bold, color: theme.ink400 });
         break;
       }
-      const cells = [row.drop, row.panel, row.switch];
+      const cells = [row.device, row.switch, row.ports];
       cells.forEach((cell, i) => {
-        page.drawText(safeText(fitText(fonts.regular, cell, patchColW[i], 7)), {
-          x: patchColX[i],
+        page.drawText(safeText(fitText(fonts.regular, cell, devColW[i], 7)), {
+          x: devColX[i],
           y: py,
           size: 7,
           font: fonts.regular,
