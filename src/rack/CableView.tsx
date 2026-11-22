@@ -617,10 +617,13 @@ function PairSection({
           const a = portPoint(panelDev, panelY, link.fromPort);
           const b = portPoint(swDev, switchY, link.toPort);
           const midY = (a.y + b.y) / 2;
-          const midX = (a.x + b.x) / 2;
           const color = link.cordColor
             ? CORD_HEX[link.cordColor]
             : "#64748b";
+          // Black reads as grey on the dark background, so a black cord
+          // draws as a dotted light-grey line — visible, and distinct
+          // from a solid white cord.
+          const isBlackCord = link.cordColor === "black";
           const selected = link.id === selectedLinkId;
           const label = drop ? dropDisplayNumber(drop) : "";
           return (
@@ -649,21 +652,11 @@ function PairSection({
               <path
                 d={`M ${a.x} ${a.y} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y}`}
                 fill="none"
-                stroke={color}
+                stroke={isBlackCord ? "#e5e7eb" : color}
+                strokeDasharray={isBlackCord ? "0.1 7" : undefined}
                 strokeWidth={selected ? 4 : 2.5}
                 strokeLinecap="round"
               />
-              {label && (
-                <text
-                  x={midX}
-                  y={midY - 5}
-                  fill={color}
-                  fontSize={9}
-                  textAnchor="middle"
-                >
-                  {label}
-                </text>
-              )}
               {selected && (
                 <g>
                   <text
