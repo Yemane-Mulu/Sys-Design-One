@@ -1236,30 +1236,19 @@ function PairSection({
         })}
       </svg>
 
-      {/* The table stays glued to the bottom of the screen while this
-          pair's section scrolls past, so the rows are always in reach
-          without scrolling down. It caps at 45% of the viewport and
-          scrolls inside itself on a long pair (Panel 1 has 22 rows).
-          An empty pair keeps the plain wrapper — no docked header. */}
-      <div
-        className={
-          links.length > 0
-            ? "overflow-auto sticky bottom-0 z-10 max-h-[45vh] bg-ink-800/95 backdrop-blur-md border-t border-white/10 -mx-3 -mb-3 px-3 pt-1 rounded-b-lg"
-            : "overflow-x-auto"
-        }
-      >
+      <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-left text-ink-300 border-b border-white/10">
-              <th className="py-1 pr-2 font-medium w-6 sticky top-0 z-[1] bg-ink-800" aria-label="Select row" />
-              <th className="py-1 pr-2 font-medium sticky top-0 z-[1] bg-ink-800">Drop</th>
-              <th className="py-1 pr-2 font-medium sticky top-0 z-[1] bg-ink-800">Device</th>
-              <th className="py-1 pr-2 font-medium sticky top-0 z-[1] bg-ink-800">{fromName} port</th>
-              <th className="py-1 pr-2 font-medium sticky top-0 z-[1] bg-ink-800">{toName} port</th>
-              <th className="py-1 pr-2 font-medium sticky top-0 z-[1] bg-ink-800">Run</th>
-              <th className="py-1 pr-2 font-medium sticky top-0 z-[1] bg-ink-800">Cord</th>
-              <th className="py-1 pr-2 font-medium sticky top-0 z-[1] bg-ink-800">Suggested</th>
-              <th className="py-1 font-medium sticky top-0 z-[1] bg-ink-800">Status</th>
+              <th className="py-1 pr-2 font-medium w-6" aria-label="Select row" />
+              <th className="py-1 pr-2 font-medium">Drop</th>
+              <th className="py-1 pr-2 font-medium">Device</th>
+              <th className="py-1 pr-2 font-medium">{fromName} port</th>
+              <th className="py-1 pr-2 font-medium">{toName} port</th>
+              <th className="py-1 pr-2 font-medium">Run</th>
+              <th className="py-1 pr-2 font-medium">Cord</th>
+              <th className="py-1 pr-2 font-medium">Suggested</th>
+              <th className="py-1 font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -1529,8 +1518,12 @@ function DetailCard({
     );
   }, [rack, moveSwitchId, moveSwDev, link.id]);
 
+  // The detail card stays glued to the bottom of the screen while a
+  // cable is selected, so it is always in reach without scrolling down
+  // to the bottom of the page. It settles into its natural spot at the
+  // very bottom when scrolled all the way down.
   return (
-    <div className="panel rounded-lg p-3 space-y-3">
+    <div className="panel rounded-lg p-3 space-y-3 sticky bottom-0 z-10 shadow-[0_-8px_24px_rgba(0,0,0,0.45)]">
       <div className="flex items-baseline justify-between flex-wrap gap-1">
         <div className="label">
           {drop ? dropDisplayNumber(drop) : "No drop"}
