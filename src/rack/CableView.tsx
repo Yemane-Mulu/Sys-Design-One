@@ -24,6 +24,8 @@ import {
   patchCordRunInches,
   placementPatchName,
   placementUHeight,
+  portGridPosition,
+  portRowRange,
   suggestedCordLength,
   type CordColor,
 } from "./rackUtils";
@@ -68,7 +70,9 @@ function uRange(p: RackPlacement, dev: RackDeviceType): string {
 }
 
 /** SVG center of a port square on a device bar. RJ45 ports run in rows
- *  from x=180; SFP slots sit past the RJ45 block. */
+ *  from x=180; SFP slots sit past the RJ45 block. Port positions follow
+ *  the group's numbering order — on the JetStreams port 2 sits under
+ *  port 1, not beside it. */
 function portPoint(
   dev: RackDeviceType,
   barY: number,
@@ -78,14 +82,20 @@ function portPoint(
   const rj = groups[0];
   const rjN = rj?.count ?? dev.frontPorts ?? 0;
   if (port <= rjN && rj) {
-    const perRow = Math.ceil(rj.count / (rj.rows ?? 1));
-    const col = (port - 1) % perRow;
-    const row = Math.floor((port - 1) / perRow);
+    const { col, row } = portGridPosition(rj, port - 1);
     return { x: 186 + col * 24, y: barY + 12 + row * 18 };
   }
   const perRow = Math.ceil((rj?.count ?? 0) / (rj?.rows ?? 1));
   const sfpX = 180 + perRow * 24 + 14;
+  const sfp = groups[1];
   const idx = port - rjN - 1;
+  if (sfp) {
+    const { col, row } = portGridPosition(sfp, idx);
+    // A 2-row SFP block lines up with the RJ45 rows; a single-row block
+    // sits centered between them, as before.
+    const y = (sfp.rows ?? 1) > 1 ? barY + 12 + row * 18 : barY + 22;
+    return { x: sfpX + col * 20 + 7, y };
+  }
   return { x: sfpX + idx * 20 + 7, y: barY + 22 };
 }
 
@@ -104,6 +114,11 @@ function DeviceBar({
   const rows = rj?.rows ?? 1;
   const sfp = dev.faceplate?.ports?.[1];
   const sfpX = 180 + perRow * 24 + 14;
+  // First/last port number on each row, following the group's order.
+  const topRange = rj ? portRowRange(rj, 0) : { first: 1, last: perRow };
+  const bottomRange = rj
+    ? portRowRange(rj, 1)
+    : { first: perRow + 1, last: rjN };
   const ports: { x: number; y: number; key: string }[] = [];
   for (let i = 0; i < rjN; i++) {
     const col = i % perRow;
@@ -140,25 +155,30 @@ function DeviceBar({
       ))}
       {sfp && (
         <g>
-          {Array.from({ length: sfp.count }, (_, s) => (
-            <rect
-              key={s}
-              x={sfpX + s * 20}
-              y={y + 15}
-              width={14}
-              height={14}
-              fill="#0b1220"
-              stroke="#f59e0b"
-            />
-          ))}
+          {Array.from({ length: sfp.count }, (_, s) => {
+            const { col, row } = portGridPosition(sfp, s);
+            const sy = (sfp.rows ?? 1) > 1 ? y + 6 + row * 18 : y + 15;
+            return (
+              <rect
+                key={s}
+                x={sfpX + col * 20}
+                y={sy}
+                width={14}
+                height={14}
+                fill="#0b1220"
+                stroke="#f59e0b"
+              />
+            );
+          })}
           <text x={sfpX} y={y + 42} fill="#8b9bb0" fontSize={9}>
             SFP
           </text>
         </g>
       )}
-      {/* Row numbers on the RJ45 block ends. */}
+      {/* Port numbers at the row ends — first and last number on each row,
+          following the group's numbering order. */}
       <text x={186} y={y + 4} fill="#5b6b80" fontSize={8} textAnchor="middle">
-        1
+        {topRange.first}
       </text>
       <text
         x={186 + (perRow - 1) * 24}
@@ -167,18 +187,29 @@ function DeviceBar({
         fontSize={8}
         textAnchor="middle"
       >
-        {perRow}
+        {topRange.last}
       </text>
       {rows > 1 && (
-        <text
-          x={186}
-          y={y + 4 + (rows - 1) * 18}
-          fill="#5b6b80"
-          fontSize={8}
-          textAnchor="middle"
-        >
-          {perRow + 1}
-        </text>
+        <>
+          <text
+            x={186}
+            y={y + 4 + (rows - 1) * 18}
+            fill="#5b6b80"
+            fontSize={8}
+            textAnchor="middle"
+          >
+            {bottomRange.first}
+          </text>
+          <text
+            x={186 + (perRow - 1) * 24}
+            y={y + 4 + (rows - 1) * 18}
+            fill="#5b6b80"
+            fontSize={8}
+            textAnchor="middle"
+          >
+            {bottomRange.last}
+          </text>
+        </>
       )}
     </g>
   );

@@ -1,6 +1,6 @@
 // Shared rack geometry helpers — used by the editor frame, the properties
 // panel, and the elevation export so all three agree on what fits where.
-import { rackDevicesById, type RackDeviceType } from "../data/rackDevices";
+import { rackDevicesById, type FaceplatePortGroup, type RackDeviceType } from "../data/rackDevices";
 import type {
   DropMarkup,
   Rack,
@@ -354,6 +354,40 @@ export function patchTableRows(
 }
 
 // ───── Patch cords (Cable View) ─────
+
+/** Grid position (0-based column, row) of the i-th port in a faceplate
+ *  group. Row-first groups number across the top row, then the next row
+ *  down. Column groups (the JetStreams) number down each column — odd
+ *  on top, even on the bottom — so port 2 sits under port 1, not beside
+ *  it. Single-row groups are the same either way. */
+export function portGridPosition(
+  g: FaceplatePortGroup,
+  i: number,
+): { col: number; row: number } {
+  const rows = g.rows ?? 1;
+  if (g.order === "column") {
+    return { col: Math.floor(i / rows), row: i % rows };
+  }
+  const perRow = Math.ceil(g.count / rows);
+  return { col: i % perRow, row: Math.floor(i / perRow) };
+}
+
+/** First and last port numbers (1-based) on one row of a faceplate
+ *  group — what the Cable View prints at the row ends. */
+export function portRowRange(
+  g: FaceplatePortGroup,
+  row: number,
+): { first: number; last: number } {
+  const rows = g.rows ?? 1;
+  const perRow = Math.ceil(g.count / rows);
+  if (g.order === "column") {
+    // Row 0 is the odd numbers (1, 3, 5 ...), row 1 the even (2, 4, 6 ...).
+    const first = row + 1;
+    return { first, last: Math.min(first + 2 * (perRow - 1), g.count) };
+  }
+  const first = row * perRow + 1;
+  return { first, last: Math.min(first + perRow - 1, g.count) };
+}
 
 /** Patch-cord lengths stocked, in feet. */
 export const CORD_LENGTHS = [1, 3, 5] as const;

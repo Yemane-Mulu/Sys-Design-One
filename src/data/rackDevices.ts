@@ -43,6 +43,11 @@ export interface FaceplatePortGroup {
   count: number;
   /** rows when count > 12 typically split into 2 rows */
   rows?: number;
+  /** how port numbers run across the rows: "row" (default) numbers the
+   *  whole top row first, then the next row; "column" numbers down each
+   *  column — odd on top, even on the bottom — as printed on the TP-Link
+   *  JetStreams. */
+  order?: "row" | "column";
   /** color of ports (typical RJ45 = "amber"; SFP = "navy") */
   color?: "amber" | "navy" | "green" | "white" | "black";
   /** label rendered above the group (e.g. "1-24 PoE") */
@@ -220,7 +225,7 @@ export const rackDevices: RackDeviceType[] = [
       base: "black",
       screws: true,
       ports: [
-        { x: 28, count: 24, rows: 2, color: "amber", label: "1-24 PoE+" },
+        { x: 28, count: 24, rows: 2, color: "amber", label: "1-24 PoE+", order: "column" },
         { x: 84, count: 4, rows: 1, color: "navy", label: "SFP" },
       ],
       leds: [{ x: 23, kind: "power", on: true }],
@@ -245,8 +250,8 @@ export const rackDevices: RackDeviceType[] = [
       base: "black",
       screws: true,
       ports: [
-        { x: 28, count: 48, rows: 2, color: "amber", label: "1-48 PoE+" },
-        { x: 84, count: 4, rows: 1, color: "navy", label: "SFP" },
+        { x: 28, count: 48, rows: 2, color: "amber", label: "1-48 PoE+", order: "column" },
+        { x: 84, count: 4, rows: 2, color: "navy", label: "SFP", order: "column" },
       ],
       leds: [{ x: 23, kind: "power", on: true }],
       texts: [{ x: 8, text: "TL-SG3452P", size: "sm", weight: "bold" }],
