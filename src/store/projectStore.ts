@@ -1531,6 +1531,15 @@ interface State {
    *  the Patch Panels tab lists drops from the whole project. Blank
    *  clears it. */
   setDropDeviceType: (dropId: string, deviceType: string) => void;
+  /** Rename a drop's label (the LV crew's field label replaces the
+   *  planned one). Searches every sheet, not just the active one, and
+   *  is undoable. The label is stored as typed (trimmed by the
+   *  caller); the caller blocks blank and duplicate labels. Patches,
+   *  cords and device types key off the drop id, so renaming never
+   *  moves or unpatches anything — but Drop Sequences matches by
+   *  label, so a renamed drop no longer counts as landed for its old
+   *  sequence. */
+  setDropNumber: (dropId: string, newNumber: string) => void;
   /** Record the patch cord on a link (Cable View). A field present in
    *  `cord` is set — `undefined` clears it; a field left out keeps its
    *  value. Length is feet (1 / 3 / 5); color is the VLAN. */
@@ -2944,6 +2953,27 @@ export const useProjectStore = create<State>()(
                     // must survive); grouping normalizes case/spacing.
                     deviceType: deviceType || undefined,
                   } as Markup)
+                : m,
+            ),
+          })),
+          updatedAt: Date.now(),
+        });
+        return {
+          history: historyAfterProjectChange(s.history, s.project),
+          project,
+        };
+      }),
+
+    setDropNumber: (dropId, newNumber) =>
+      set((s) => {
+        if (!s.project) return s;
+        const project = syncRackSystems({
+          ...s.project,
+          sheets: s.project.sheets.map((sh) => ({
+            ...sh,
+            markups: sh.markups.map((m) =>
+              m.id === dropId && m.kind === "drop"
+                ? ({ ...m, number: newNumber } as Markup)
                 : m,
             ),
           })),

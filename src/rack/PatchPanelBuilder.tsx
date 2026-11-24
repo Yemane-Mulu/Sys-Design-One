@@ -7,12 +7,14 @@
 // the printout always agree.
 
 import { useEffect, useMemo, useState } from "react";
+import { Pencil, X } from "lucide-react";
 import {
   useProjectStore,
+  type DropMarkup,
   type Rack,
 } from "../store/projectStore";
 import { rackDevicesById } from "../data/rackDevices";
-import { allDropMarkups } from "../lib/dropLabels";
+import { allDropMarkups, normalizeDropNumber } from "../lib/dropLabels";
 import {
   dropDisplayNumber,
   patchablePorts,
@@ -27,6 +29,7 @@ export function PatchPanelBuilder() {
   const setActiveRack = useProjectStore((s) => s.setActiveRack);
   const assignDrop = useProjectStore((s) => s.assignPanelPortDrop);
   const setDeviceType = useProjectStore((s) => s.setDropDeviceType);
+  const setDropNumber = useProjectStore((s) => s.setDropNumber);
 
   const [panelId, setPanelId] = useState("");
 
@@ -132,6 +135,50 @@ export function PatchPanelBuilder() {
     [options, portDrop],
   );
 
+  // Rename a drop's label in place (the LV crew's field label replaces
+  // the planned one). The pencil swaps the dropdown for a text box:
+  // Enter saves, Esc or clicking away cancels. A blank label or one
+  // already used by another drop (case-insensitive) can't be saved.
+  const [editingDropId, setEditingDropId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const startRename = (drop: DropMarkup) => {
+    setEditingDropId(drop.id);
+    setEditValue(dropDisplayNumber(drop));
+    setEditError(null);
+  };
+  const cancelRename = () => {
+    setEditingDropId(null);
+    setEditError(null);
+  };
+  const saveRename = () => {
+    if (!editingDropId) return;
+    const drop = dropById.get(editingDropId);
+    if (!drop) {
+      cancelRename();
+      return;
+    }
+    const next = editValue.trim();
+    if (!next) {
+      setEditError("Label can't be blank.");
+      return;
+    }
+    if (
+      normalizeDropNumber(next) !== normalizeDropNumber(drop.number) &&
+      drops.some(
+        (d) =>
+          d.id !== drop.id &&
+          normalizeDropNumber(d.number) === normalizeDropNumber(next),
+      )
+    ) {
+      setEditError("That label is already used by another drop.");
+      return;
+    }
+    if (next !== drop.number?.trim()) setDropNumber(drop.id, next);
+    setEditingDropId(null);
+    setEditError(null);
+  };
+
   return (
     <div className="flex-1 overflow-auto workspace-grid">
       <div className="max-w-3xl mx-auto w-full p-6 space-y-4">
@@ -234,41 +281,93 @@ export function PatchPanelBuilder() {
                         Port {port}
                       </span>
                       <div className="min-w-0">
-                        <select
-                          className="input w-full"
-                          value={dropId ?? ""}
-                          onChange={(e) =>
-                            assignDrop(
-                              rack.id,
-                              panel.id,
-                              port,
-                              e.target.value || undefined,
-                            )
-                          }
-                        >
-                          <option value="">— no drop —</option>
-                          {options.map((d) => {
-                            const current = portDrop.byDrop.get(d.id);
-                            const suffix =
-                              current &&
-                              !(
-                                current.placementId === panel.id &&
-                                current.port === port
-                              )
-                                ? ` — on ${portLabel(current.placementId, current.port, rack)}`
-                                : "";
-                            return (
-                              <option key={d.id} value={d.id}>
-                                {dropDisplayNumber(d)}
-                                {d.label && d.label !== d.number
-                                  ? ` (${d.label})`
-                                  : ""}
-                                {d.notes?.trim() ? ` — ${d.notes.trim()}` : ""}
-                                {suffix}
-                              </option>
-                            );
-                          })}
-                        </select>
+                        {editingDropId === dropId ? (
+                          <>
+                            <div className="flex gap-1.5 items-center">
+                              <input
+                                className="input w-full font-mono"
+                                value={editValue}
+                                autoFocus
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => {
+                                  setEditValue(e.target.value);
+                                  setEditError(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") saveRename();
+                                  else if (e.key === "Escape") cancelRename();
+                                }}
+                                onBlur={() => cancelRename()}
+                                aria-label="Rename drop"
+                              />
+                              <button
+                                className="btn btn-sm shrink-0"
+                                onClick={cancelRename}
+                                aria-label="Cancel rename"
+                                title="Cancel"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            {editError ? (
+                              <div className="text-[11px] text-signal-red px-1 pt-0.5">
+                                {editError}
+                              </div>
+                            ) : (
+                              <div className="text-[11px] text-ink-400 px-1 pt-0.5">
+                                Enter to save · Esc to cancel
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="flex gap-1.5 items-center">
+                            <select
+                              className="input w-full"
+                              value={dropId ?? ""}
+                              onChange={(e) =>
+                                assignDrop(
+                                  rack.id,
+                                  panel.id,
+                                  port,
+                                  e.target.value || undefined,
+                                )
+                              }
+                            >
+                              <option value="">— no drop —</option>
+                              {options.map((d) => {
+                                const current = portDrop.byDrop.get(d.id);
+                                const suffix =
+                                  current &&
+                                  !(
+                                    current.placementId === panel.id &&
+                                    current.port === port
+                                  )
+                                    ? ` — on ${portLabel(current.placementId, current.port, rack)}`
+                                    : "";
+                                return (
+                                  <option key={d.id} value={d.id}>
+                                    {dropDisplayNumber(d)}
+                                    {d.label && d.label !== d.number
+                                      ? ` (${d.label})`
+                                      : ""}
+                                    {d.notes?.trim() ? ` — ${d.notes.trim()}` : ""}
+                                    {suffix}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            {dropId && assignedDrop ? (
+                              <button
+                                className="btn btn-sm shrink-0"
+                                onClick={() => startRename(assignedDrop)}
+                                aria-label="Rename drop"
+                                title="Rename this drop"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
                         {assignedDrop?.notes?.trim() ? (
                           <div
                             className="text-[11px] text-ink-400 truncate px-1 pt-0.5"
@@ -330,7 +429,51 @@ export function PatchPanelBuilder() {
             <div className="text-xs text-ink-200 leading-relaxed">
               {unassigned.map((d) => (
                 <span key={d.id} className="inline-block mr-3">
-                  <span className="font-mono">{dropDisplayNumber(d)}</span>
+                  {editingDropId === d.id ? (
+                    <span className="inline-flex gap-1 items-center align-middle">
+                      <input
+                        className="input font-mono !py-0.5 !px-1.5 text-xs w-32"
+                        value={editValue}
+                        autoFocus
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => {
+                          setEditValue(e.target.value);
+                          setEditError(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveRename();
+                          else if (e.key === "Escape") cancelRename();
+                        }}
+                        onBlur={() => cancelRename()}
+                        aria-label="Rename drop"
+                      />
+                      <button
+                        className="btn btn-sm shrink-0 !px-1.5"
+                        onClick={cancelRename}
+                        aria-label="Cancel rename"
+                        title="Cancel"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                      {editError ? (
+                        <span className="text-signal-red text-[11px]">
+                          {editError}
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="font-mono">{dropDisplayNumber(d)}</span>
+                      <button
+                        className="btn btn-sm shrink-0 !px-1.5 ml-1 align-middle"
+                        onClick={() => startRename(d)}
+                        aria-label={`Rename ${dropDisplayNumber(d)}`}
+                        title="Rename this drop"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    </>
+                  )}
                   {d.notes?.trim() ? (
                     <span className="text-ink-400"> — {d.notes.trim()}</span>
                   ) : null}
